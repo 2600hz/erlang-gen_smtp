@@ -25,28 +25,21 @@
 
 -module(gen_smtp_client).
 
--define(DEFAULT_OPTIONS, [
-    % whether to connect on 465 in ssl mode
-    {ssl, false},
-    % always, never, if_available
-    {tls, if_available},
-    % used in ssl:connect, http://erlang.org/doc/man/ssl.html
-    {tls_options, [{versions, ['tlsv1', 'tlsv1.1', 'tlsv1.2']}]},
-    {auth, if_available},
-    {hostname, smtp_util:guess_FQDN()},
-    % how many retries per smtp host on temporary failure
-    {retries, 1},
-    {on_transaction_error, quit},
-    % smtp, lmtp
-    {protocol, smtp}
-]).
+-define(DEFAULT_OPTIONS, [{ssl, false}, % whether to connect on 465 in ssl mode
+                          {tls, if_available}, % always, never, if_available
+                          {tls_options, [{versions, ['tlsv1', 'tlsv1.1', 'tlsv1.2']}]}, % used in ssl:connect, http://erlang.org/doc/man/ssl.html
+                          {auth, if_available},
+                          {hostname, smtp_util:guess_FQDN()},
+                          {retries, 1}, % how many retries per smtp host on temporary failure
+                          {on_transaction_error, quit},
+                          {protocol, smtp} % smtp, lmtp
+                         ]).
 
--define(AUTH_PREFERENCE, [
-    "CRAM-MD5",
-    "LOGIN",
-    "PLAIN",
-    "XOAUTH2"
-]).
+-define(AUTH_PREFERENCE, ["CRAM-MD5",
+                          "LOGIN",
+                          "PLAIN",
+                          "XOAUTH2"
+                         ]).
 
 -define(TIMEOUT, 1200000).
 
@@ -58,96 +51,95 @@
 -endif.
 
 -export_type([
-    smtp_client_socket/0,
-    email/0,
-    email_address/0,
-    options/0,
-    callback/0,
-    smtp_session_error/0,
-    host_failure/0,
-    failure/0,
-    validate_options_error/0
-]).
+              smtp_client_socket/0,
+              email/0,
+              email_address/0,
+              options/0,
+              callback/0,
+              smtp_session_error/0,
+              host_failure/0,
+              failure/0,
+              validate_options_error/0
+             ]).
 
 -type email_address() :: string() | binary().
 -type email() :: {
-    From :: email_address(),
-    To :: [email_address(), ...],
-    Body :: string() | binary() | fun(() -> string() | binary())
-}.
+                  From :: email_address(),
+                  To :: [email_address(), ...],
+                  Body :: string() | binary() | fun(() -> string() | binary())
+                 }.
 
 -type options() :: [
-    {ssl, boolean()}
-    | {tls, always | never | if_available}
-    % ssl:option() / ssl:tls_client_option()
-    | {tls_options, list()}
-    | {sockopts, [gen_tcp:connect_option()]}
-    | {port, inet:port_number()}
-    | {timeout, timeout()}
-    | {relay, inet:ip_address() | inet:hostname()}
-    | {no_mx_lookups, boolean()}
-    | {auth, always | never | if_available}
-    | {hostname, string()}
-    | {retries, non_neg_integer()}
-    | {username, string()}
-    | {password, string()}
-    | {trace_fun, fun((Fmt :: string(), Args :: [any()]) -> any())}
-    | {on_transaction_error, quit | reset}
-    | {protocol, smtp | lmtp}
-].
+                    {ssl, boolean()}
+                   | {tls, always | never | if_available}
+                                                % ssl:option() / ssl:tls_client_option()
+                   | {tls_options, list()}
+                   | {sockopts, [gen_tcp:connect_option()]}
+                   | {port, inet:port_number()}
+                   | {timeout, timeout()}
+                   | {relay, inet:ip_address() | inet:hostname()}
+                   | {no_mx_lookups, boolean()}
+                   | {auth, always | never | if_available}
+                   | {hostname, string()}
+                   | {retries, non_neg_integer()}
+                   | {username, string()}
+                   | {password, string()}
+                   | {trace_fun, fun((Fmt :: string(), Args :: [any()]) -> any())}
+                   | {on_transaction_error, quit | reset}
+                   | {protocol, smtp | lmtp}
+                   ].
 
 -type extensions() :: [{binary(), binary()}].
 
 -record(smtp_client_socket, {
-    socket :: smtp_socket:socket(),
-    host :: string(),
-    extensions :: list(),
-    options :: list()
-}).
+                             socket :: smtp_socket:socket(),
+                             host :: string(),
+                             extensions :: list(),
+                             options :: list()
+                            }).
 -opaque smtp_client_socket() :: #smtp_client_socket{}.
 
 -type callback() :: fun(
-    (
-        {exit, any()}
-        | smtp_session_error()
-        | {ok, binary()}
-    ) -> any()
-).
+              (
+               {exit, any()}
+              | smtp_session_error()
+              | {ok, binary()}
+              ) -> any()
+                       ).
 
 %% Smth that is thrown from inner SMTP functions
 
-% server's 5xx response
+                                                % server's 5xx response
 -type permanent_failure_reason() ::
-    binary()
-    | auth_failed
-    | ssl_not_started.
-%server's 4xx response
+        binary()
+      | auth_failed
+      | ssl_not_started.
+                                                %server's 4xx response
 -type temporary_failure_reason() ::
-    binary()
-    | tls_failed.
+        binary()
+      | tls_failed.
 -type validate_options_error() ::
-    no_relay
-    | invalid_port
-    | no_credentials.
+        no_relay
+      | invalid_port
+      | no_credentials.
 -type failure() ::
-    {temporary_failure, temporary_failure_reason()}
-    | {permanent_failure, permanent_failure_reason()}
-    | {missing_requirement, auth | tls}
-    | {unexpected_response, [binary()]}
-    | {network_failure, {error, timeout | inet:posix()}}.
+        {temporary_failure, temporary_failure_reason()}
+      | {permanent_failure, permanent_failure_reason()}
+      | {missing_requirement, auth | tls}
+      | {unexpected_response, [binary()]}
+      | {network_failure, {error, timeout | inet:posix()}}.
 -type smtp_host() :: inet:hostname().
 -type host_failure() ::
-    {temporary_failure, smtp_host(), temporary_failure_reason()}
-    | {permanent_failure, smtp_host(), permanent_failure_reason()}
-    | {missing_requirement, smtp_host(), auth | tls}
-    | {unexpected_response, smtp_host(), [binary()]}
-    | {network_failure, smtp_host(), {error, timeout | inet:posix()}}.
+        {temporary_failure, smtp_host(), temporary_failure_reason()}
+      | {permanent_failure, smtp_host(), permanent_failure_reason()}
+      | {missing_requirement, smtp_host(), auth | tls}
+      | {unexpected_response, smtp_host(), [binary()]}
+      | {network_failure, smtp_host(), {error, timeout | inet:posix()}}.
 -type smtp_session_error() ::
-    {error, no_more_hosts | send, {permanent_failure, smtp_host(), permanent_failure_reason()}}
-    | {error, retries_exceeded | send, host_failure()}.
+        {error, no_more_hosts | send, {permanent_failure, smtp_host(), permanent_failure_reason()}}
+      | {error, retries_exceeded | send, host_failure()}.
 
--spec send(Email :: email(), Options :: options()) ->
-    {'ok', pid()} | {'error', validate_options_error()}.
+-spec send(Email :: email(), Options :: options()) -> {'ok', pid()} | {'error', validate_options_error()} | pid().
 %% @doc Send an email in a non-blocking fashion via a spawned_linked process.
 %% The process will exit abnormally on a send failure.
 send(Email, Options) ->
@@ -158,51 +150,70 @@ send(Email, Options) ->
 %% If it's using LMTP protocol, the callback will receive a list with the delivery response for each address `{ok, [{"foo@bar.com", "250 ok"}, {"bar@foo.com", "452 <bar@foo.com> is temporarily over quota"}]}`.
 %% identifier,  `{error, Type, Message}' or `{exit, ExitReason}', as the single argument.
 -spec send(Email :: email(), Options :: options(), Callback :: callback() | 'undefined') ->
-    {'ok', pid()} | {'error', validate_options_error()}.
+          {'ok', pid()} | {'error', validate_options_error()}.
 send(Email, Options, Callback) ->
     NewOptions = lists:ukeymerge(
-        1,
-        lists:sort(Options),
-        lists:sort(?DEFAULT_OPTIONS)
-    ),
+                   1,
+                   lists:sort(Options),
+                   lists:sort(?DEFAULT_OPTIONS)
+                  ),
     case check_options(NewOptions) of
         ok ->
             Pid = spawn_link(
-                fun() ->
-                    try send_it(Email, NewOptions) of
-                        {error, _Type, _Reason} = Error when is_function(Callback, 1) ->
-                            Callback(Error);
-                        {error, _Type, _Reason} = Error ->
-                            exit(Error);
-                        Receipt when is_function(Callback, 1) ->
-                            Callback({ok, Receipt});
-                        _Receipt ->
-                            ok
-                    catch
-                        exit:Reason when is_function(Callback, 1) ->
-                            Callback({exit, Reason})
+                    fun() ->
+                            try send_it(Email, NewOptions) of
+                                {error, _Type, _Reason} = Error when is_function(Callback, 1) ->
+                                    Callback(Error);
+                                {error, _Type, _Reason} = Error ->
+                                    exit(Error);
+                                Receipt when is_function(Callback, 1) ->
+                                    Callback({ok, Receipt});
+                                _Receipt ->
+                                    ok
+                            catch
+                                exit:Reason when is_function(Callback, 1) ->
+                                    Callback({exit, Reason})
+                            end
                     end
-                end
-            ),
+                   ),
             {ok, Pid};
         {error, Reason} ->
             {error, Reason}
     end.
 
+-spec spawn_to_callback(Email :: email(), Options :: options(), Callback :: callback()) -> pid().
+spawn_to_callback(Email, NewOptions, Callback) ->
+    spawn(fun() ->
+                  process_flag(trap_exit, true),
+                  Pid = spawn_link(fun() ->
+                                           send_it_nonblock(Email, NewOptions, Callback)
+                                   end
+                                  ),
+                  receive
+                      {'EXIT', Pid, Reason} ->
+                          case Reason of
+                              X when X == normal; X == shutdown ->
+                                  ok;
+                              Error ->
+                                  Callback({exit, Error})
+                          end
+                  end
+          end).
+
 -spec send_blocking(Email :: email(), Options :: options()) ->
-    binary()
-    | [{binary(), binary()}, ...]
-    | smtp_session_error()
-    | {error, validate_options_error()}.
+          binary()
+              | [{binary(), binary()}, ...]
+              | smtp_session_error()
+              | {error, validate_options_error()}.
 %% @doc Send an email and block waiting for the reply. Returns either a binary that contains
 %% If it's using LMTP protocol, it will return a list with the delivery response for each address `[{"foo@bar.com", "250 ok"}, {"bar@foo.com", "452 <bar@foo.com> is temporarily over quota"}]`.
 %% the SMTP server's receipt or `{error, Type, Message}' or `{error, Reason}'.
 send_blocking(Email, Options) ->
     NewOptions = lists:ukeymerge(
-        1,
-        lists:sort(Options),
-        lists:sort(?DEFAULT_OPTIONS)
-    ),
+                   1,
+                   lists:sort(Options),
+                   lists:sort(?DEFAULT_OPTIONS)
+                  ),
     case check_options(NewOptions) of
         ok ->
             send_it(Email, NewOptions);
@@ -211,17 +222,17 @@ send_blocking(Email, Options) ->
     end.
 
 -spec open(Options :: options()) ->
-    {ok, SocketDescriptor :: smtp_client_socket()}
-    | smtp_session_error()
-    | {error, bad_option, validate_options_error()}.
+          {ok, SocketDescriptor :: smtp_client_socket()}
+              | smtp_session_error()
+              | {error, bad_option, validate_options_error()}.
 %% @doc Open a SMTP client socket with the provided options
 %% Once the socket has been opened, you can use it with deliver/2.
 open(Options) ->
     NewOptions = lists:ukeymerge(
-        1,
-        lists:sort(Options),
-        lists:sort(?DEFAULT_OPTIONS)
-    ),
+                   1,
+                   lists:sort(Options),
+                   lists:sort(?DEFAULT_OPTIONS)
+                  ),
     case check_options(NewOptions) of
         ok ->
             RelayDomain = proplists:get_value(relay, NewOptions),
@@ -236,7 +247,7 @@ open(Options) ->
             Hosts =
                 case MXRecords of
                     [] ->
-                        % maybe we're supposed to relay to a host directly
+                                                % maybe we're supposed to relay to a host directly
                         [{0, RelayDomain}];
                     _ ->
                         MXRecords
@@ -247,7 +258,7 @@ open(Options) ->
     end.
 
 -spec deliver(Socket :: smtp_client_socket(), Email :: email()) ->
-    {'ok', Receipt :: binary() | [{binary(), binary()}, ...]} | {error, FailMsg :: failure()}.
+          {'ok', Receipt :: binary() | [{binary(), binary()}, ...]} | {error, FailMsg :: failure()}.
 %% @doc Deliver an email on an open smtp client socket.
 %% For use with a socket opened with open/1. The socket can be reused as long as the previous call to deliver/2 returned `{ok, Receipt}'.
 %% If it's using LMTP protocol, it will return a list with the delivery response for each address `{ok, [{"foo@bar.com", "250 ok"}, {"bar@foo.com", "452 <bar@foo.com> is temporarily over quota"}]}`.
@@ -255,10 +266,10 @@ open(Options) ->
 %% the socket <em>may</em> still be reused.
 deliver(#smtp_client_socket{} = SmtpClientSocket, Email) ->
     #smtp_client_socket{
-        socket = Socket,
-        extensions = Extensions,
-        options = Options
-    } = SmtpClientSocket,
+       socket = Socket,
+       extensions = Extensions,
+       options = Options
+      } = SmtpClientSocket,
     try
         Receipt = try_sending_it(Email, Socket, Extensions, Options),
         {ok, Receipt}
@@ -273,8 +284,8 @@ close(#smtp_client_socket{socket = Socket}) ->
     quit(Socket).
 
 -spec send_it(Email :: email(), Options :: options()) ->
-    binary()
-    | smtp_session_error().
+          binary()
+              | smtp_session_error().
 send_it(Email, Options) ->
     RelayDomain = to_string(proplists:get_value(relay, Options)),
     MXRecords =
@@ -288,7 +299,7 @@ send_it(Email, Options) ->
     Hosts =
         case MXRecords of
             [] ->
-                % maybe we're supposed to relay to a host directly
+                                                % maybe we're supposed to relay to a host directly
                 [{0, RelayDomain}];
             _ ->
                 MXRecords
@@ -298,11 +309,11 @@ send_it(Email, Options) ->
             Error;
         {ok, ClientSocket} ->
             #smtp_client_socket{
-                socket = Socket,
-                host = Host,
-                extensions = Extensions,
-                options = Options1
-            } = ClientSocket,
+               socket = Socket,
+               host = Host,
+               extensions = Extensions,
+               options = Options1
+              } = ClientSocket,
             try
                 try_sending_it(Email, Socket, Extensions, Options1)
             catch
@@ -314,10 +325,10 @@ send_it(Email, Options) ->
     end.
 
 -spec try_smtp_sessions(
-    Hosts :: [{non_neg_integer(), string()}, ...], Options :: options(), RetryList :: list()
-) ->
-    {ok, smtp_client_socket()}
-    | smtp_session_error().
+        Hosts :: [{non_neg_integer(), string()}, ...], Options :: options(), RetryList :: list()
+       ) ->
+          {ok, smtp_client_socket()}
+              | smtp_session_error().
 try_smtp_sessions([{_Distance, Host} | _Tail] = Hosts, Options, RetryList) ->
     try
         {ok, open_smtp_session(Host, Options)}
@@ -327,15 +338,15 @@ try_smtp_sessions([{_Distance, Host} | _Tail] = Hosts, Options, RetryList) ->
     end.
 
 -spec handle_smtp_throw(failure(), [{non_neg_integer(), smtp_host()}], options(), list()) ->
-    {ok, smtp_client_socket()}
-    | smtp_session_error().
+          {ok, smtp_client_socket()}
+              | smtp_session_error().
 handle_smtp_throw({permanent_failure, Message}, [{_Distance, Host} | _Tail], _Options, _RetryList) ->
-    % permanent failure means no retries, and don't even continue with other hosts
+                                                % permanent failure means no retries, and don't even continue with other hosts
     {error, no_more_hosts, {permanent_failure, Host, Message}};
 handle_smtp_throw(
-    {temporary_failure, tls_failed}, [{_Distance, Host} | _Tail] = Hosts, Options, RetryList
-) ->
-    % Could not start the TLS handshake; if tls is optional then try without TLS
+  {temporary_failure, tls_failed}, [{_Distance, Host} | _Tail] = Hosts, Options, RetryList
+ ) ->
+                                                % Could not start the TLS handshake; if tls is optional then try without TLS
     case proplists:get_value(tls, Options) of
         if_available ->
             NoTLSOptions = [{tls, never} | proplists:delete(tls, Options)],
@@ -362,21 +373,21 @@ try_next_host({FailureType, Message}, [{_Distance, Host} | _Tail] = Hosts, Optio
     end.
 
 fetch_next_host(Retries, RetryCount, [{_Distance, Host} | Tail], RetryList, Options) when
-    is_integer(RetryCount), RetryCount >= Retries
-->
-    % out of chances
+      is_integer(RetryCount), RetryCount >= Retries
+      ->
+                                                % out of chances
     trace(Options, "retries for ~s exceeded (~p of ~p)~n", [Host, RetryCount, Retries]),
     {Tail, lists:keydelete(Host, 1, RetryList)};
 fetch_next_host(Retries, RetryCount, [{Distance, Host} | Tail], RetryList, Options) when
-    is_integer(RetryCount)
-->
+      is_integer(RetryCount)
+      ->
     trace(Options, "scheduling ~s for retry (~p of ~p)~n", [Host, RetryCount, Retries]),
     {Tail ++ [{Distance, Host}], lists:keydelete(Host, 1, RetryList) ++ [{Host, RetryCount + 1}]};
 fetch_next_host(0, _RetryCount, [{_Distance, Host} | Tail], RetryList, _Options) ->
-    % done retrying completely
+                                                % done retrying completely
     {Tail, lists:keydelete(Host, 1, RetryList)};
 fetch_next_host(Retries, _RetryCount, [{Distance, Host} | Tail], RetryList, Options) ->
-    % otherwise...
+                                                % otherwise...
     trace(Options, "scheduling ~s for retry (~p of ~p)~n", [Host, 1, Retries]),
     {Tail ++ [{Distance, Host}], lists:keydelete(Host, 1, RetryList) ++ [{Host, 1}]}.
 
@@ -391,18 +402,18 @@ open_smtp_session(Host, Options) ->
     Authed = try_AUTH(Socket2, Options, proplists:get_value(<<"AUTH">>, Extensions2)),
     trace(Options, "Authentication status is ~p~n", [Authed]),
     #smtp_client_socket{
-        socket = Socket2,
-        host = Host,
-        extensions = Extensions,
-        options = Options
-    }.
+       socket = Socket2,
+       host = Host,
+       extensions = Extensions,
+       options = Options
+      }.
 
 -spec try_sending_it(
-    Email :: email(),
-    Socket :: smtp_socket:socket(),
-    Extensions :: extensions(),
-    Options :: options()
-) -> binary() | [{binary(), binary()}, ...].
+        Email :: email(),
+        Socket :: smtp_socket:socket(),
+        Extensions :: extensions(),
+        Options :: options()
+       ) -> binary() | [{binary(), binary()}, ...].
 try_sending_it({From, To, Body}, Socket, Extensions, Options) ->
     try_MAIL_FROM(From, Socket, Extensions, Options),
     try_RCPT_TO(To, Socket, Extensions, Options),
@@ -412,16 +423,16 @@ try_sending_it({From, To, Body}, Socket, Extensions, Options) ->
     end.
 
 -spec try_MAIL_FROM(
-    From :: email_address(),
-    Socket :: smtp_socket:socket(),
-    Extensions :: extensions(),
-    Options :: options()
-) -> true.
+        From :: email_address(),
+        Socket :: smtp_socket:socket(),
+        Extensions :: extensions(),
+        Options :: options()
+       ) -> true.
 try_MAIL_FROM(From, Socket, Extensions, Options) when is_binary(From) ->
     try_MAIL_FROM(binary_to_list(From), Socket, Extensions, Options);
 try_MAIL_FROM("<" ++ _ = From, Socket, _Extensions, Options) ->
     OnTxError = proplists:get_value(on_transaction_error, Options),
-    % TODO do we need to bother with SIZE?
+                                                % TODO do we need to bother with SIZE?
     smtp_socket:send(Socket, ["MAIL FROM:", From, "\r\n"]),
     case read_possible_multiline_reply(Socket) of
         {ok, <<"250", _Rest/binary>>} ->
@@ -442,15 +453,15 @@ try_MAIL_FROM("<" ++ _ = From, Socket, _Extensions, Options) ->
             throw({permanent_failure, Msg})
     end;
 try_MAIL_FROM(From, Socket, Extension, Options) ->
-    % someone was bad and didn't put in the angle brackets
+                                                % someone was bad and didn't put in the angle brackets
     try_MAIL_FROM("<" ++ From ++ ">", Socket, Extension, Options).
 
 -spec try_RCPT_TO(
-    Tos :: [email_address()],
-    Socket :: smtp_socket:socket(),
-    Extensions :: extensions(),
-    Options :: options()
-) -> true.
+        Tos :: [email_address()],
+        Socket :: smtp_socket:socket(),
+        Extensions :: extensions(),
+        Options :: options()
+       ) -> true.
 try_RCPT_TO([], _Socket, _Extensions, _Options) ->
     true;
 try_RCPT_TO([To | Tail], Socket, Extensions, Options) when is_binary(To) ->
@@ -477,15 +488,15 @@ try_RCPT_TO(["<" ++ _ = To | Tail], Socket, Extensions, Options) ->
             throw({permanent_failure, Msg})
     end;
 try_RCPT_TO([To | Tail], Socket, Extensions, Options) ->
-    % someone was bad and didn't put in the angle brackets
+                                                % someone was bad and didn't put in the angle brackets
     try_RCPT_TO(["<" ++ To ++ ">" | Tail], Socket, Extensions, Options).
 
 -spec try_DATA(
-    Body :: binary() | function(),
-    Socket :: smtp_socket:socket(),
-    Extensions :: extensions(),
-    Options :: options()
-) -> binary().
+        Body :: binary() | function(),
+        Socket :: smtp_socket:socket(),
+        Extensions :: extensions(),
+        Options :: options()
+       ) -> binary().
 try_DATA(Body, Socket, Extensions, Options) when is_function(Body) ->
     try_DATA(Body(), Socket, Extensions, Options);
 try_DATA(Body, Socket, _Extensions, Options) ->
@@ -495,8 +506,8 @@ try_DATA(Body, Socket, _Extensions, Options) ->
         {ok, <<"354", _Rest/binary>>} ->
             %% Escape period at start of line (rfc5321 4.5.2)
             EscapedBody = re:replace(Body, <<"^\\\.">>, <<"..">>, [
-                global, multiline, {return, binary}
-            ]),
+                                                                   global, multiline, {return, binary}
+                                                                  ]),
             smtp_socket:send(Socket, [EscapedBody, "\r\n.\r\n"]),
             case read_possible_multiline_reply(Socket) of
                 {ok, <<"250 ", Receipt/binary>>} ->
@@ -527,12 +538,12 @@ try_DATA(Body, Socket, _Extensions, Options) ->
     end.
 
 -spec try_lmtp_DATA(
-    Body :: binary() | function(),
-    To :: [binary(), ...],
-    Socket :: smtp_socket:socket(),
-    Extensions :: extensions(),
-    Options :: options()
-) -> binary() | [{email_address(), binary() | string()}, ...].
+        Body :: binary() | function(),
+        To :: [binary(), ...],
+        Socket :: smtp_socket:socket(),
+        Extensions :: extensions(),
+        Options :: options()
+       ) -> binary() | [{email_address(), binary() | string()}, ...].
 try_lmtp_DATA(Body, To, Socket, Extensions, Options) when is_function(Body) ->
     try_lmtp_DATA(Body(), To, Socket, Extensions, Options);
 try_lmtp_DATA(Body, To, Socket, _Extensions, Options) ->
@@ -542,16 +553,16 @@ try_lmtp_DATA(Body, To, Socket, _Extensions, Options) ->
         {ok, <<"354", _Rest/binary>>} ->
             %% Escape period at start of line (rfc5321 4.5.2)
             EscapedBody = re:replace(Body, <<"^\\\.">>, <<"..">>, [
-                global, multiline, {return, binary}
-            ]),
+                                                                   global, multiline, {return, binary}
+                                                                  ]),
             smtp_socket:send(Socket, [EscapedBody, "\r\n.\r\n"]),
             lists:map(
-                fun(Recipient) ->
-                    {ok, Receipt} = read_possible_multiline_reply(Socket),
-                    {Recipient, Receipt}
-                end,
-                To
-            );
+              fun(Recipient) ->
+                      {ok, Receipt} = read_possible_multiline_reply(Socket),
+                      {Recipient, Receipt}
+              end,
+              To
+             );
         {ok, <<"4", _Rest/binary>> = Msg} when OnTxError =:= reset ->
             rset_or_quit(Socket),
             throw({temporary_failure, Msg});
@@ -567,7 +578,7 @@ try_lmtp_DATA(Body, To, Socket, _Extensions, Options) ->
     end.
 
 -spec try_AUTH(Socket :: smtp_socket:socket(), Options :: options(), AuthTypes :: [string()]) ->
-    boolean().
+          boolean().
 try_AUTH(Socket, Options, []) ->
     case proplists:get_value(auth, Options) of
         always ->
@@ -587,8 +598,8 @@ try_AUTH(Socket, Options, undefined) ->
 try_AUTH(Socket, Options, AuthTypes) ->
     case
         proplists:is_defined(username, Options) and
-            proplists:is_defined(password, Options) and
-            (proplists:get_value(auth, Options) =/= never)
+        proplists:is_defined(password, Options) and
+        (proplists:get_value(auth, Options) =/= never)
     of
         false ->
             case proplists:get_value(auth, Options) of
@@ -624,12 +635,12 @@ to_binary(String) when is_binary(String) -> String;
 to_binary(String) when is_list(String) -> list_to_binary(String).
 
 -spec do_AUTH(
-    Socket :: smtp_socket:socket(),
-    Username :: binary(),
-    Password :: binary(),
-    Types :: [string()],
-    Options :: options()
-) -> boolean().
+        Socket :: smtp_socket:socket(),
+        Username :: binary(),
+        Password :: binary(),
+        Types :: [string()],
+        Options :: options()
+       ) -> boolean().
 do_AUTH(Socket, Username, Password, Types, Options) ->
     FixedTypes = [string:to_upper(X) || X <- Types],
     trace(Options, "Fixed types: ~p~n", [FixedTypes]),
@@ -638,12 +649,12 @@ do_AUTH(Socket, Username, Password, Types, Options) ->
     do_AUTH_each(Socket, Username, Password, AllowedTypes, Options).
 
 -spec do_AUTH_each(
-    Socket :: smtp_socket:socket(),
-    Username :: binary(),
-    Password :: binary(),
-    AuthTypes :: [string()],
-    Options :: options()
-) -> boolean().
+        Socket :: smtp_socket:socket(),
+        Username :: binary(),
+        Password :: binary(),
+        AuthTypes :: [string()],
+        Options :: options()
+       ) -> boolean().
 do_AUTH_each(_Socket, _Username, _Password, [], _Options) ->
     false;
 do_AUTH_each(Socket, Username, Password, ["CRAM-MD5" | Tail], Options) ->
@@ -716,7 +727,7 @@ do_AUTH_each(Socket, Username, Password, ["PLAIN" | Tail], Options) ->
             trace(Options, "authentication accepted~n", []),
             true;
         Else ->
-            % TODO do we need to bother trying the multi-step PLAIN?
+                                                % TODO do we need to bother trying the multi-step PLAIN?
             trace(Options, "authentication rejected ~p~n", [Else]),
             do_AUTH_each(Socket, Username, Password, Tail, Options)
     end;
@@ -744,11 +755,11 @@ try_EHLO(Socket, Options) ->
             _ -> "EHLO "
         end,
     ok = smtp_socket:send(Socket, [
-        Hallo, proplists:get_value(hostname, Options, smtp_util:guess_FQDN()), "\r\n"
-    ]),
+                                   Hallo, proplists:get_value(hostname, Options, smtp_util:guess_FQDN()), "\r\n"
+                                  ]),
     case read_possible_multiline_reply(Socket) of
         {ok, <<"500", _Rest/binary>>} ->
-            % Unrecognized command, fall back to HELO
+                                                % Unrecognized command, fall back to HELO
             try_HELO(Socket, Options);
         {ok, <<"4", _Rest/binary>> = Msg} ->
             quit(Socket),
@@ -760,8 +771,8 @@ try_EHLO(Socket, Options) ->
 -spec try_HELO(Socket :: smtp_socket:socket(), Options :: options()) -> {ok, list()}.
 try_HELO(Socket, Options) ->
     ok = smtp_socket:send(Socket, [
-        "HELO ", proplists:get_value(hostname, Options, smtp_util:guess_FQDN()), "\r\n"
-    ]),
+                                   "HELO ", proplists:get_value(hostname, Options, smtp_util:guess_FQDN()), "\r\n"
+                                  ]),
     case read_possible_multiline_reply(Socket) of
         {ok, <<"250", _Rest/binary>>} ->
             {ok, []};
@@ -773,10 +784,10 @@ try_HELO(Socket, Options) ->
             throw({permanent_failure, Msg})
     end.
 
-% check if we should try to do TLS
+                                                % check if we should try to do TLS
 -spec try_STARTTLS(
-    Socket :: smtp_socket:socket(), Options :: options(), Extensions :: extensions()
-) -> {smtp_socket:socket(), extensions()}.
+        Socket :: smtp_socket:socket(), Options :: options(), Extensions :: extensions()
+       ) -> {smtp_socket:socket(), extensions()}.
 try_STARTTLS(Socket, Options, Extensions) ->
     case {proplists:get_value(tls, Options), proplists:get_value(<<"STARTTLS">>, Extensions)} of
         {Atom, true} when Atom =:= always; Atom =:= if_available ->
@@ -803,18 +814,18 @@ try_STARTTLS(Socket, Options, Extensions) ->
 
 %% attempt to upgrade socket to TLS
 -spec do_STARTTLS(Socket :: smtp_socket:socket(), Options :: options()) ->
-    {smtp_socket:socket(), extensions()} | false.
+          {smtp_socket:socket(), extensions()} | false.
 do_STARTTLS(Socket, Options) ->
     smtp_socket:send(Socket, "STARTTLS\r\n"),
     case read_possible_multiline_reply(Socket) of
         {ok, <<"220", _Rest/binary>>} ->
             case
                 catch smtp_socket:to_ssl_client(
-                    Socket, [binary | proplists:get_value(tls_options, Options, [])], 5000
-                )
+                        Socket, [binary | proplists:get_value(tls_options, Options, [])], 5000
+                       )
             of
                 {ok, NewSocket} ->
-                    %NewSocket;
+                                                %NewSocket;
                     {ok, Extensions} = try_EHLO(NewSocket, Options),
                     {NewSocket, Extensions};
                 {'EXIT', Reason} ->
@@ -905,7 +916,7 @@ read_possible_multiline_reply(Socket) ->
     end.
 
 -spec read_multiline_reply(Socket :: smtp_socket:socket(), Code :: binary(), Acc :: [binary()]) ->
-    {ok, binary()}.
+          {ok, binary()}.
 read_multiline_reply(Socket, Code, Acc) ->
     case smtp_socket:recv(Socket, 0, ?TIMEOUT) of
         {ok, Packet} ->
@@ -936,22 +947,22 @@ quit(Socket) ->
     smtp_socket:close(Socket),
     ok.
 
-% TODO - more checking
+                                                % TODO - more checking
 check_options(Options) ->
     CheckedOptions = [relay, port, auth],
     lists:foldl(
-        fun(Option, State) ->
-            case State of
-                ok ->
-                    Value = proplists:get_value(Option, Options),
-                    check_option({Option, Value}, Options);
-                Other ->
-                    Other
-            end
-        end,
-        ok,
-        CheckedOptions
-    ).
+      fun(Option, State) ->
+              case State of
+                  ok ->
+                      Value = proplists:get_value(Option, Options),
+                      check_option({Option, Value}, Options);
+                  Other ->
+                      Other
+              end
+      end,
+      ok,
+      CheckedOptions
+     ).
 
 check_option({relay, undefined}, _Options) ->
     {error, no_relay};
@@ -965,7 +976,7 @@ check_option({port, _}, _Options) ->
 check_option({auth, always}, Options) ->
     case
         proplists:is_defined(username, Options) and
-            proplists:is_defined(password, Options)
+        proplists:is_defined(password, Options)
     of
         false ->
             {error, no_credentials};
@@ -979,21 +990,21 @@ check_option({auth, _}, _Options) ->
 parse_extensions(Reply, Options) ->
     [_ | Reply2] = re:split(Reply, "\r\n", [{return, binary}, trim]),
     [
-        begin
-            Body = binstr:substr(Entry, 5),
-            case re:split(Body, " ", [{return, binary}, trim, {parts, 2}]) of
-                [Verb, Parameters] ->
-                    {binstr:to_upper(Verb), Parameters};
-                [Body] ->
-                    case binstr:strchr(Body, $=) of
-                        0 ->
-                            {binstr:to_upper(Body), true};
-                        _ ->
-                            trace(Options, "discarding option ~p~n", [Body]),
-                            []
-                    end
-            end
-        end
+     begin
+         Body = binstr:substr(Entry, 5),
+         case re:split(Body, " ", [{return, binary}, trim, {parts, 2}]) of
+             [Verb, Parameters] ->
+                 {binstr:to_upper(Verb), Parameters};
+             [Body] ->
+                 case binstr:strchr(Body, $=) of
+                     0 ->
+                         {binstr:to_upper(Body), true};
+                     _ ->
+                         trace(Options, "discarding option ~p~n", [Body]),
+                         []
+                 end
+         end
+     end
      || Entry <- Reply2
     ].
 
@@ -1007,1008 +1018,1008 @@ trace(Options, Format, Args) ->
 
 session_start_test_() ->
     {foreach, local,
-        fun() ->
-            {ok, ListenSock} = smtp_socket:listen(tcp, 9876),
-            {ListenSock}
-        end,
-        fun({ListenSock}) ->
-            smtp_socket:close(ListenSock)
-        end,
-        [
-            fun({ListenSock}) ->
-                {"simple session initiation", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"retry on crashed EHLO twice if requested", fun() ->
-                    Options = [
-                        {relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {retries, 2}
-                    ],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:close(X),
-                    {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Y, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:close(Y),
-                    {ok, Z} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Z, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Z, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"retry on crashed EHLO", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    unlink(Pid),
-                    Monitor = erlang:monitor(process, Pid),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:close(X),
-                    {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Y, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:close(Y),
-                    ?assertEqual({error, timeout}, smtp_socket:accept(ListenSock, 1000)),
-                    receive
-                        {'DOWN', Monitor, _, _, Error} ->
-                            ?assertMatch({error, retries_exceeded, _}, Error)
-                    end,
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"abort on 554 greeting", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    unlink(Pid),
-                    Monitor = erlang:monitor(process, Pid),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "554 get lost, kid\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    receive
-                        {'DOWN', Monitor, _, _, Error} ->
-                            ?assertMatch({error, no_more_hosts, _}, Error)
-                    end,
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"retry on 421 greeting", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "421 can't you see I'm busy?\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Y, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"retry on messed up EHLO response", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    unlink(Pid),
-                    Monitor = erlang:monitor(process, Pid),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(
-                        X, "250-server.example.com EHLO\r\n250-AUTH LOGIN PLAIN\r\n421 too busy\r\n"
-                    ),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+     fun() ->
+             {ok, ListenSock} = smtp_socket:listen(tcp, 9876),
+             {ListenSock}
+     end,
+     fun({ListenSock}) ->
+             smtp_socket:close(ListenSock)
+     end,
+     [
+      fun({ListenSock}) ->
+              {"simple session initiation", fun() ->
+                                                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                    smtp_socket:send(X, "220 Some banner\r\n"),
+                                                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                    ok
+                                            end}
+      end,
+      fun({ListenSock}) ->
+              {"retry on crashed EHLO twice if requested", fun() ->
+                                                                   Options = [
+                                                                              {relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {retries, 2}
+                                                                             ],
+                                                                   {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                                   {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                   smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                   ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                   smtp_socket:close(X),
+                                                                   {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                                                   smtp_socket:send(Y, "220 Some banner\r\n"),
+                                                                   ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                   smtp_socket:close(Y),
+                                                                   {ok, Z} = smtp_socket:accept(ListenSock, 1000),
+                                                                   smtp_socket:send(Z, "220 Some banner\r\n"),
+                                                                   ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Z, 0, 1000)),
+                                                                   ok
+                                                           end}
+      end,
+      fun({ListenSock}) ->
+              {"retry on crashed EHLO", fun() ->
+                                                Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                {ok, Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                unlink(Pid),
+                                                Monitor = erlang:monitor(process, Pid),
+                                                {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                smtp_socket:send(X, "220 Some banner\r\n"),
+                                                ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                smtp_socket:close(X),
+                                                {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                                smtp_socket:send(Y, "220 Some banner\r\n"),
+                                                ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                smtp_socket:close(Y),
+                                                ?assertEqual({error, timeout}, smtp_socket:accept(ListenSock, 1000)),
+                                                receive
+                                                    {'DOWN', Monitor, _, _, Error} ->
+                                                        ?assertMatch({error, retries_exceeded, _}, Error)
+                                                end,
+                                                ok
+                                        end}
+      end,
+      fun({ListenSock}) ->
+              {"abort on 554 greeting", fun() ->
+                                                Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                {ok, Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                unlink(Pid),
+                                                Monitor = erlang:monitor(process, Pid),
+                                                {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                smtp_socket:send(X, "554 get lost, kid\r\n"),
+                                                ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                receive
+                                                    {'DOWN', Monitor, _, _, Error} ->
+                                                        ?assertMatch({error, no_more_hosts, _}, Error)
+                                                end,
+                                                ok
+                                        end}
+      end,
+      fun({ListenSock}) ->
+              {"retry on 421 greeting", fun() ->
+                                                Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                smtp_socket:send(X, "421 can't you see I'm busy?\r\n"),
+                                                ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                                smtp_socket:send(Y, "220 Some banner\r\n"),
+                                                ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                ok
+                                        end}
+      end,
+      fun({ListenSock}) ->
+              {"retry on messed up EHLO response", fun() ->
+                                                           Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                           {ok, Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                           unlink(Pid),
+                                                           Monitor = erlang:monitor(process, Pid),
+                                                           {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                           smtp_socket:send(X, "220 Some banner\r\n"),
+                                                           ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                           smtp_socket:send(
+                                                             X, "250-server.example.com EHLO\r\n250-AUTH LOGIN PLAIN\r\n421 too busy\r\n"
+                                                            ),
+                                                           ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
 
-                    {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Y, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(
-                        Y, "250-server.example.com EHLO\r\n250-AUTH LOGIN PLAIN\r\n421 too busy\r\n"
-                    ),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    receive
-                        {'DOWN', Monitor, _, _, Error} ->
-                            ?assertMatch({error, retries_exceeded, _}, Error)
-                    end,
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"retry with HELO when EHLO not accepted", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 \r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "500 5.3.3 Unrecognized command\r\n"),
-                    ?assertMatch({ok, "HELO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 Some banner\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"use LHLO for LMTP connections", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 \r\n"),
-                    ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 Some banner\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"handle single responses from DATA on LMTP connections", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 \r\n"),
-                    ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 Some banner\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"handle multiple successful responses from DATA on LMTP connections", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com", "bar@foo.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 \r\n"),
-                    ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 Some banner\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<bar@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"handle mixed responses from DATA on LMTP connections #1", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com", "bar@foo.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 \r\n"),
-                    ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 Some banner\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<bar@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n452 <bar@foo.com> is temporarily over quota\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"handle mixed responses from DATA on LMTP connections #2", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com", "bar@foo.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 \r\n"),
-                    ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 Some banner\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<bar@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "452 <bar@foo.com> is temporarily over quota\r\n"),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"a valid complete transaction without TLS advertised should succeed", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 hostname\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"a valid complete transaction exercising period escaping", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], ".hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 hostname\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "..hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"a valid complete transaction with binary arguments should succeed", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
-                    {ok, _Pid} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>}, Options
-                    ),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 hostname\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"a valid complete transaction with TLS advertised should succeed", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, <<"testing">>}],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 STARTTLS\r\n"),
-                    ?assertMatch({ok, "STARTTLS\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    application:ensure_all_started(gen_smtp),
-                    smtp_socket:send(X, "220 ok\r\n"),
-                    {ok, Y} = smtp_socket:to_ssl_server(
-                        X,
-                        [
-                            {certfile, "test/fixtures/mx1.example.com-server.crt"},
-                            {keyfile, "test/fixtures/mx1.example.com-server.key"}
-                        ],
-                        5000
-                    ),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250-hostname\r\n250 STARTTLS\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"a valid complete transaction with TLS advertised and binary arguments should succeed", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, <<"testing">>}],
-                    {ok, _Pid} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>}, Options
-                    ),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 STARTTLS\r\n"),
-                    ?assertMatch({ok, "STARTTLS\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    application:ensure_all_started(gen_smtp),
-                    smtp_socket:send(X, "220 ok\r\n"),
-                    {ok, Y} = smtp_socket:to_ssl_server(
-                        X,
-                        [
-                            {certfile, "test/fixtures/mx1.example.com-server.crt"},
-                            {keyfile, "test/fixtures/mx1.example.com-server.key"}
-                        ],
-                        5000
-                    ),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250-hostname\r\n250 STARTTLS\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"Transaction with TLS advertised, but broken, should be restarted without TLS, if allowed", fun() ->
-                    Options = [
-                        {relay, "localhost"},
-                        {port, 9876},
-                        {hostname, <<"testing">>},
-                        {tls, if_available}
-                    ],
-                    {ok, _Pid} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>}, Options
-                    ),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 STARTTLS\r\n"),
-                    ?assertMatch({ok, "STARTTLS\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "220 ok\r\n"),
-                    %% Now, send some invalid data instead of TLS handshake and close the socket
-                    {ok, [22, V1, V2 | _]} = smtp_socket:recv(X, 0, 1000),
-                    smtp_socket:send(X, [22, V1, V2, 0, 0]),
-                    smtp_socket:close(X),
-                    %% Client would make another attempt to connect, without TLS
-                    {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Y, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250-hostname\r\n250 STARTTLS\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"Send with callback", fun() ->
-                    Options = [{relay, "localhost"}, {port, 9876}, {hostname, <<"testing">>}],
-                    Self = self(),
-                    Ref = make_ref(),
-                    Callback = fun(Arg) -> Self ! {callback, Ref, Arg} end,
-                    {ok, _Pid1} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>},
-                        Options,
-                        Callback
-                    ),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 hostname\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch(
-                        {ok, <<"ok\r\n">>},
-                        receive
-                            {callback, Ref, CbRet1} -> CbRet1
-                        end
-                    ),
-                    {ok, _Pid2} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>},
-                        Options,
-                        Callback
-                    ),
-                    {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Y, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 hostname\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "599 error\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ?assertMatch(
-                        {error, send, {permanent_failure, _, <<"599 error\r\n">>}},
-                        receive
-                            {callback, Ref, CbRet2} -> CbRet2
-                        end
-                    ),
-                    ok
-                end}
-            end,
+                                                           {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                                           smtp_socket:send(Y, "220 Some banner\r\n"),
+                                                           ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                           smtp_socket:send(
+                                                             Y, "250-server.example.com EHLO\r\n250-AUTH LOGIN PLAIN\r\n421 too busy\r\n"
+                                                            ),
+                                                           ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                           receive
+                                                               {'DOWN', Monitor, _, _, Error} ->
+                                                                   ?assertMatch({error, retries_exceeded, _}, Error)
+                                                           end,
+                                                           ok
+                                                   end}
+      end,
+      fun({ListenSock}) ->
+              {"retry with HELO when EHLO not accepted", fun() ->
+                                                                 Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                                 {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                                 {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                 smtp_socket:send(X, "220 \r\n"),
+                                                                 ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                 smtp_socket:send(X, "500 5.3.3 Unrecognized command\r\n"),
+                                                                 ?assertMatch({ok, "HELO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                 smtp_socket:send(X, "250 Some banner\r\n"),
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(X, "250 ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                 smtp_socket:send(X, "250 ok\r\n"),
+                                                                 ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                 smtp_socket:send(X, "354 ok\r\n"),
+                                                                 ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                 ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                 smtp_socket:send(X, "250 ok\r\n"),
+                                                                 ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                 ok
+                                                         end}
+      end,
+      fun({ListenSock}) ->
+              {"use LHLO for LMTP connections", fun() ->
+                                                        Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
+                                                        {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                        {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                        smtp_socket:send(X, "220 \r\n"),
+                                                        ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                        smtp_socket:send(X, "250 Some banner\r\n"),
+                                                        ?assertMatch(
+                                                           {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                          ),
+                                                        smtp_socket:send(X, "250 ok\r\n"),
+                                                        ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                        smtp_socket:send(X, "250 ok\r\n"),
+                                                        ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                        smtp_socket:send(X, "354 ok\r\n"),
+                                                        ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                        ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                        smtp_socket:send(X, "250 ok\r\n"),
+                                                        ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                        ok
+                                                end}
+      end,
+      fun({ListenSock}) ->
+              {"handle single responses from DATA on LMTP connections", fun() ->
+                                                                                Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
+                                                                                {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                                                {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                smtp_socket:send(X, "220 \r\n"),
+                                                                                ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                smtp_socket:send(X, "250 Some banner\r\n"),
+                                                                                ?assertMatch(
+                                                                                   {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                                  ),
+                                                                                smtp_socket:send(X, "250 ok\r\n"),
+                                                                                ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                smtp_socket:send(X, "250 ok\r\n"),
+                                                                                ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                smtp_socket:send(X, "354 ok\r\n"),
+                                                                                ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                smtp_socket:send(X, "250 ok\r\n"),
+                                                                                ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                ok
+                                                                        end}
+      end,
+      fun({ListenSock}) ->
+              {"handle multiple successful responses from DATA on LMTP connections", fun() ->
+                                                                                             Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
+                                                                                             {ok, _Pid} = send({"test@foo.com", ["foo@bar.com", "bar@foo.com"], "hello world"}, Options),
+                                                                                             {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                             smtp_socket:send(X, "220 \r\n"),
+                                                                                             ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "250 Some banner\r\n"),
+                                                                                             ?assertMatch(
+                                                                                                {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                                               ),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             ?assertMatch({ok, "RCPT TO:<bar@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "354 ok\r\n"),
+                                                                                             ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             ok
+                                                                                     end}
+      end,
+      fun({ListenSock}) ->
+              {"handle mixed responses from DATA on LMTP connections #1", fun() ->
+                                                                                  Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
+                                                                                  {ok, _Pid} = send({"test@foo.com", ["foo@bar.com", "bar@foo.com"], "hello world"}, Options),
+                                                                                  {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                  smtp_socket:send(X, "220 \r\n"),
+                                                                                  ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 Some banner\r\n"),
+                                                                                  ?assertMatch(
+                                                                                     {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                                    ),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "RCPT TO:<bar@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "354 ok\r\n"),
+                                                                                  ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 ok\r\n452 <bar@foo.com> is temporarily over quota\r\n"),
+                                                                                  ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  ok
+                                                                          end}
+      end,
+      fun({ListenSock}) ->
+              {"handle mixed responses from DATA on LMTP connections #2", fun() ->
+                                                                                  Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}, {protocol, lmtp}],
+                                                                                  {ok, _Pid} = send({"test@foo.com", ["foo@bar.com", "bar@foo.com"], "hello world"}, Options),
+                                                                                  {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                  smtp_socket:send(X, "220 \r\n"),
+                                                                                  ?assertMatch({ok, "LHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 Some banner\r\n"),
+                                                                                  ?assertMatch(
+                                                                                     {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                                    ),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "RCPT TO:<bar@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "354 ok\r\n"),
+                                                                                  ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "452 <bar@foo.com> is temporarily over quota\r\n"),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  ok
+                                                                          end}
+      end,
+      fun({ListenSock}) ->
+              {"a valid complete transaction without TLS advertised should succeed", fun() ->
+                                                                                             Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                                                             {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                                                             {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                             smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                                             ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "250 hostname\r\n"),
+                                                                                             ?assertMatch(
+                                                                                                {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                                               ),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "354 ok\r\n"),
+                                                                                             ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             smtp_socket:send(X, "250 ok\r\n"),
+                                                                                             ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                             ok
+                                                                                     end}
+      end,
+      fun({ListenSock}) ->
+              {"a valid complete transaction exercising period escaping", fun() ->
+                                                                                  Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                                                  {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], ".hello world"}, Options),
+                                                                                  {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                  smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                                  ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 hostname\r\n"),
+                                                                                  ?assertMatch(
+                                                                                     {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                                    ),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "354 ok\r\n"),
+                                                                                  ?assertMatch({ok, "..hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  smtp_socket:send(X, "250 ok\r\n"),
+                                                                                  ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                  ok
+                                                                          end}
+      end,
+      fun({ListenSock}) ->
+              {"a valid complete transaction with binary arguments should succeed", fun() ->
+                                                                                            Options = [{relay, "localhost"}, {port, 9876}, {hostname, "testing"}],
+                                                                                            {ok, _Pid} = send(
+                                                                                                           {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>}, Options
+                                                                                                          ),
+                                                                                            {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                            smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                                            ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                            smtp_socket:send(X, "250 hostname\r\n"),
+                                                                                            ?assertMatch(
+                                                                                               {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                                              ),
+                                                                                            smtp_socket:send(X, "250 ok\r\n"),
+                                                                                            ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                            smtp_socket:send(X, "250 ok\r\n"),
+                                                                                            ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                            smtp_socket:send(X, "354 ok\r\n"),
+                                                                                            ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                            ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                            smtp_socket:send(X, "250 ok\r\n"),
+                                                                                            ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                            ok
+                                                                                    end}
+      end,
+      fun({ListenSock}) ->
+              {"a valid complete transaction with TLS advertised should succeed", fun() ->
+                                                                                          Options = [{relay, "localhost"}, {port, 9876}, {hostname, <<"testing">>}],
+                                                                                          {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                                                          {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                          smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                                          ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                          smtp_socket:send(X, "250-hostname\r\n250 STARTTLS\r\n"),
+                                                                                          ?assertMatch({ok, "STARTTLS\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                          application:ensure_all_started(gen_smtp),
+                                                                                          smtp_socket:send(X, "220 ok\r\n"),
+                                                                                          {ok, Y} = smtp_socket:to_ssl_server(
+                                                                                                      X,
+                                                                                                      [
+                                                                                                       {certfile, "test/fixtures/mx1.example.com-server.crt"},
+                                                                                                       {keyfile, "test/fixtures/mx1.example.com-server.key"}
+                                                                                                      ],
+                                                                                                      5000
+                                                                                                     ),
+                                                                                          ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                          smtp_socket:send(Y, "250-hostname\r\n250 STARTTLS\r\n"),
+                                                                                          ?assertMatch(
+                                                                                             {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                                            ),
+                                                                                          smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                          ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                          smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                          ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                          smtp_socket:send(Y, "354 ok\r\n"),
+                                                                                          ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                          ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                          smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                          ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                          ok
+                                                                                  end}
+      end,
+      fun({ListenSock}) ->
+              {"a valid complete transaction with TLS advertised and binary arguments should succeed", fun() ->
+                                                                                                               Options = [{relay, "localhost"}, {port, 9876}, {hostname, <<"testing">>}],
+                                                                                                               {ok, _Pid} = send(
+                                                                                                                              {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>}, Options
+                                                                                                                             ),
+                                                                                                               {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                                               smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                                                               ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                                               smtp_socket:send(X, "250-hostname\r\n250 STARTTLS\r\n"),
+                                                                                                               ?assertMatch({ok, "STARTTLS\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                                               application:ensure_all_started(gen_smtp),
+                                                                                                               smtp_socket:send(X, "220 ok\r\n"),
+                                                                                                               {ok, Y} = smtp_socket:to_ssl_server(
+                                                                                                                           X,
+                                                                                                                           [
+                                                                                                                            {certfile, "test/fixtures/mx1.example.com-server.crt"},
+                                                                                                                            {keyfile, "test/fixtures/mx1.example.com-server.key"}
+                                                                                                                           ],
+                                                                                                                           5000
+                                                                                                                          ),
+                                                                                                               ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                               smtp_socket:send(Y, "250-hostname\r\n250 STARTTLS\r\n"),
+                                                                                                               ?assertMatch(
+                                                                                                                  {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                                                                 ),
+                                                                                                               smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                                               ?assertMatch(
+                                                                                                                  {ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                                                                 ),
+                                                                                                               smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                                               ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                               smtp_socket:send(Y, "354 ok\r\n"),
+                                                                                                               ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                               ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                               smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                                               ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                               ok
+                                                                                                       end}
+      end,
+      fun({ListenSock}) ->
+              {"Transaction with TLS advertised, but broken, should be restarted without TLS, if allowed", fun() ->
+                                                                                                                   Options = [
+                                                                                                                              {relay, "localhost"},
+                                                                                                                              {port, 9876},
+                                                                                                                              {hostname, <<"testing">>},
+                                                                                                                              {tls, if_available}
+                                                                                                                             ],
+                                                                                                                   {ok, _Pid} = send(
+                                                                                                                                  {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>}, Options
+                                                                                                                                 ),
+                                                                                                                   {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                                                   smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                                                                   ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                                                   smtp_socket:send(X, "250-hostname\r\n250 STARTTLS\r\n"),
+                                                                                                                   ?assertMatch({ok, "STARTTLS\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                                                   smtp_socket:send(X, "220 ok\r\n"),
+                                                                                                                   %% Now, send some invalid data instead of TLS handshake and close the socket
+                                                                                                                   {ok, [22, V1, V2 | _]} = smtp_socket:recv(X, 0, 1000),
+                                                                                                                   smtp_socket:send(X, [22, V1, V2, 0, 0]),
+                                                                                                                   smtp_socket:close(X),
+                                                                                                                   %% Client would make another attempt to connect, without TLS
+                                                                                                                   {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                                                                                                   smtp_socket:send(Y, "220 Some banner\r\n"),
+                                                                                                                   ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                                   smtp_socket:send(Y, "250-hostname\r\n250 STARTTLS\r\n"),
+                                                                                                                   ?assertMatch(
+                                                                                                                      {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                                                                     ),
+                                                                                                                   smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                                                   ?assertMatch(
+                                                                                                                      {ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                                                                     ),
+                                                                                                                   smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                                                   ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                                   smtp_socket:send(Y, "354 ok\r\n"),
+                                                                                                                   ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                                   ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                                   smtp_socket:send(Y, "250 ok\r\n"),
+                                                                                                                   ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                                                   ok
+                                                                                                           end}
+      end,
+      fun({ListenSock}) ->
+              {"Send with callback", fun() ->
+                                             Options = [{relay, "localhost"}, {port, 9876}, {hostname, <<"testing">>}],
+                                             Self = self(),
+                                             Ref = make_ref(),
+                                             Callback = fun(Arg) -> Self ! {callback, Ref, Arg} end,
+                                             {ok, _Pid1} = send(
+                                                             {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>},
+                                                             Options,
+                                                             Callback
+                                                            ),
+                                             {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                             smtp_socket:send(X, "220 Some banner\r\n"),
+                                             ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                             smtp_socket:send(X, "250 hostname\r\n"),
+                                             ?assertMatch(
+                                                {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                               ),
+                                             smtp_socket:send(X, "250 ok\r\n"),
+                                             ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                             smtp_socket:send(X, "250 ok\r\n"),
+                                             ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                             smtp_socket:send(X, "354 ok\r\n"),
+                                             ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                             ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                             smtp_socket:send(X, "250 ok\r\n"),
+                                             ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                             ?assertMatch(
+                                                {ok, <<"ok\r\n">>},
+                                                receive
+                                                    {callback, Ref, CbRet1} -> CbRet1
+                                                end
+                                               ),
+                                             {ok, _Pid2} = send(
+                                                             {<<"test@foo.com">>, [<<"foo@bar.com">>], <<"hello world">>},
+                                                             Options,
+                                                             Callback
+                                                            ),
+                                             {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                             smtp_socket:send(Y, "220 Some banner\r\n"),
+                                             ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                             smtp_socket:send(Y, "250 hostname\r\n"),
+                                             ?assertMatch(
+                                                {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                               ),
+                                             smtp_socket:send(Y, "599 error\r\n"),
+                                             ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                             ?assertMatch(
+                                                {error, send, {permanent_failure, _, <<"599 error\r\n">>}},
+                                                receive
+                                                    {callback, Ref, CbRet2} -> CbRet2
+                                                end
+                                               ),
+                                             ok
+                                     end}
+      end,
 
-            fun({ListenSock}) ->
-                {"Deliver with RSET on transaction error", fun() ->
-                    Self = self(),
-                    Pid = spawn_link(fun() ->
-                        EMail = {"test@foo.com", ["foo@bar.com"], "hello world"},
-                        Options = [
-                            {relay, "localhost"},
-                            {port, 9876},
-                            {hostname, "testing"},
-                            {on_transaction_error, reset}
-                        ],
-                        {ok, X} = open(Options),
-                        LoopFn = fun Loop() ->
-                            receive
-                                {Self, deliver, Exp} ->
-                                    ?assertMatch({Exp, _}, deliver(X, EMail)),
-                                    Loop();
-                                {Self, stop} ->
-                                    close(X),
-                                    ok
-                            end
-                        end,
-                        LoopFn(),
-                        unlink(Self)
-                    end),
-                    {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(Y, "220 Some Banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 hostname\r\n"),
+      fun({ListenSock}) ->
+              {"Deliver with RSET on transaction error", fun() ->
+                                                                 Self = self(),
+                                                                 Pid = spawn_link(fun() ->
+                                                                                          EMail = {"test@foo.com", ["foo@bar.com"], "hello world"},
+                                                                                          Options = [
+                                                                                                     {relay, "localhost"},
+                                                                                                     {port, 9876},
+                                                                                                     {hostname, "testing"},
+                                                                                                     {on_transaction_error, reset}
+                                                                                                    ],
+                                                                                          {ok, X} = open(Options),
+                                                                                          LoopFn = fun Loop() ->
+                                                                                                           receive
+                                                                                                               {Self, deliver, Exp} ->
+                                                                                                                   ?assertMatch({Exp, _}, deliver(X, EMail)),
+                                                                                                                   Loop();
+                                                                                                               {Self, stop} ->
+                                                                                                                   close(X),
+                                                                                                                   ok
+                                                                                                           end
+                                                                                                   end,
+                                                                                          LoopFn(),
+                                                                                          unlink(Self)
+                                                                                  end),
+                                                                 {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                                                 smtp_socket:send(Y, "220 Some Banner\r\n"),
+                                                                 ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 hostname\r\n"),
 
-                    Pid ! {self(), deliver, error},
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "599 Error\r\n"),
-                    ?assertMatch({ok, "RSET\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y, "599 Error\r\n"),
+                                                                 ?assertMatch({ok, "RSET\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
 
-                    Pid ! {self(), deliver, error},
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "599 Error\r\n"),
-                    ?assertMatch({ok, "RSET\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "599 Error\r\n"),
+                                                                 ?assertMatch({ok, "RSET\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
 
-                    Pid ! {self(), deliver, error},
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "599 Error\r\n"),
-                    ?assertMatch({ok, "RSET\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "599 Error\r\n"),
+                                                                 ?assertMatch({ok, "RSET\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
 
-                    Pid ! {self(), deliver, error},
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "354 Continue\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "599 Error\r\n"),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "354 Continue\r\n"),
+                                                                 ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "599 Error\r\n"),
 
-                    Pid ! {self(), deliver, ok},
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
-                    ),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "354 Continue\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 Pid ! {self(), deliver, ok},
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "354 Continue\r\n"),
+                                                                 ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:send(Y, "250 Ok\r\n"),
 
-                    Pid ! {self(), stop},
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                    smtp_socket:close(Y),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"Deliver with QUIT on transaction error", fun() ->
-                    Self = self(),
-                    Pid = spawn_link(fun() ->
-                        EMail = {"test@foo.com", ["foo@bar.com"], "hello world"},
-                        Options = [
-                            {relay, "localhost"},
-                            {port, 9876},
-                            {hostname, "testing"},
-                            {on_transaction_error, quit}
-                        ],
-                        LoopFn = fun Loop(LastSock) ->
-                            receive
-                                {Self, deliver, Exp} ->
-                                    {ok, X} = open(Options),
-                                    ?assertMatch({Exp, _}, deliver(X, EMail)),
-                                    Loop(X);
-                                {Self, stop} ->
-                                    catch close(LastSock),
-                                    ok
-                            end
-                        end,
-                        LoopFn(undefined),
-                        unlink(Self)
-                    end),
-                    SessionInitFn = fun() ->
-                        {ok, Y} = smtp_socket:accept(ListenSock, 1000),
-                        smtp_socket:send(Y, "220 Some Banner\r\n"),
-                        ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
-                        smtp_socket:send(Y, "250 hostname\r\n"),
-                        Y
-                    end,
+                                                                 Pid ! {self(), stop},
+                                                                 ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                 smtp_socket:close(Y),
+                                                                 ok
+                                                         end}
+      end,
+      fun({ListenSock}) ->
+              {"Deliver with QUIT on transaction error", fun() ->
+                                                                 Self = self(),
+                                                                 Pid = spawn_link(fun() ->
+                                                                                          EMail = {"test@foo.com", ["foo@bar.com"], "hello world"},
+                                                                                          Options = [
+                                                                                                     {relay, "localhost"},
+                                                                                                     {port, 9876},
+                                                                                                     {hostname, "testing"},
+                                                                                                     {on_transaction_error, quit}
+                                                                                                    ],
+                                                                                          LoopFn = fun Loop(LastSock) ->
+                                                                                                           receive
+                                                                                                               {Self, deliver, Exp} ->
+                                                                                                                   {ok, X} = open(Options),
+                                                                                                                   ?assertMatch({Exp, _}, deliver(X, EMail)),
+                                                                                                                   Loop(X);
+                                                                                                               {Self, stop} ->
+                                                                                                                   catch close(LastSock),
+                                                                                                                   ok
+                                                                                                           end
+                                                                                                   end,
+                                                                                          LoopFn(undefined),
+                                                                                          unlink(Self)
+                                                                                  end),
+                                                                 SessionInitFn = fun() ->
+                                                                                         {ok, Y} = smtp_socket:accept(ListenSock, 1000),
+                                                                                         smtp_socket:send(Y, "220 Some Banner\r\n"),
+                                                                                         ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(Y, 0, 1000)),
+                                                                                         smtp_socket:send(Y, "250 hostname\r\n"),
+                                                                                         Y
+                                                                                 end,
 
-                    Pid ! {self(), deliver, error},
-                    Y1 = SessionInitFn(),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y1, 0, 1000)
-                    ),
-                    smtp_socket:send(Y1, "599 Error\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y1, 0, 1000)),
-                    smtp_socket:close(Y1),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 Y1 = SessionInitFn(),
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y1, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y1, "599 Error\r\n"),
+                                                                 ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y1, 0, 1000)),
+                                                                 smtp_socket:close(Y1),
 
-                    Pid ! {self(), deliver, error},
-                    Y2 = SessionInitFn(),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y2, 0, 1000)
-                    ),
-                    smtp_socket:send(Y2, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y2, 0, 1000)),
-                    smtp_socket:send(Y2, "599 Error\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y2, 0, 1000)),
-                    smtp_socket:close(Y2),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 Y2 = SessionInitFn(),
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y2, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y2, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y2, 0, 1000)),
+                                                                 smtp_socket:send(Y2, "599 Error\r\n"),
+                                                                 ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y2, 0, 1000)),
+                                                                 smtp_socket:close(Y2),
 
-                    Pid ! {self(), deliver, error},
-                    Y3 = SessionInitFn(),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y3, 0, 1000)
-                    ),
-                    smtp_socket:send(Y3, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y3, 0, 1000)),
-                    smtp_socket:send(Y3, "250 Ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y3, 0, 1000)),
-                    smtp_socket:send(Y3, "599 Error\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y3, 0, 1000)),
-                    smtp_socket:close(Y3),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 Y3 = SessionInitFn(),
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y3, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y3, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y3, 0, 1000)),
+                                                                 smtp_socket:send(Y3, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y3, 0, 1000)),
+                                                                 smtp_socket:send(Y3, "599 Error\r\n"),
+                                                                 ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y3, 0, 1000)),
+                                                                 smtp_socket:close(Y3),
 
-                    Pid ! {self(), deliver, error},
-                    Y4 = SessionInitFn(),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y4, 0, 1000)
-                    ),
-                    smtp_socket:send(Y4, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
-                    smtp_socket:send(Y4, "250 Ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
-                    smtp_socket:send(Y4, "354 Continue\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
-                    smtp_socket:send(Y4, "599 Error\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
-                    smtp_socket:close(Y4),
+                                                                 Pid ! {self(), deliver, error},
+                                                                 Y4 = SessionInitFn(),
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y4, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y4, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
+                                                                 smtp_socket:send(Y4, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
+                                                                 smtp_socket:send(Y4, "354 Continue\r\n"),
+                                                                 ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
+                                                                 ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
+                                                                 smtp_socket:send(Y4, "599 Error\r\n"),
+                                                                 ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y4, 0, 1000)),
+                                                                 smtp_socket:close(Y4),
 
-                    Pid ! {self(), deliver, ok},
-                    Y5 = SessionInitFn(),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y5, 0, 1000)
-                    ),
-                    smtp_socket:send(Y5, "250 Ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
-                    smtp_socket:send(Y5, "250 Ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
-                    smtp_socket:send(Y5, "354 Continue\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
-                    smtp_socket:send(Y5, "250 Ok\r\n"),
+                                                                 Pid ! {self(), deliver, ok},
+                                                                 Y5 = SessionInitFn(),
+                                                                 ?assertMatch(
+                                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(Y5, 0, 1000)
+                                                                   ),
+                                                                 smtp_socket:send(Y5, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
+                                                                 smtp_socket:send(Y5, "250 Ok\r\n"),
+                                                                 ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
+                                                                 smtp_socket:send(Y5, "354 Continue\r\n"),
+                                                                 ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
+                                                                 ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
+                                                                 smtp_socket:send(Y5, "250 Ok\r\n"),
 
-                    Pid ! {self(), stop},
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
-                    smtp_socket:close(Y5),
-                    ok
-                end}
-            end,
+                                                                 Pid ! {self(), stop},
+                                                                 ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(Y5, 0, 1000)),
+                                                                 smtp_socket:close(Y5),
+                                                                 ok
+                                                         end}
+      end,
 
-            fun({ListenSock}) ->
-                {"AUTH PLAIN should work", fun() ->
-                    Options = [
-                        {relay, "localhost"},
-                        {port, 9876},
-                        {hostname, "testing"},
-                        {username, "user"},
-                        {password, "pass"}
-                    ],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 AUTH PLAIN\r\n"),
-                    AuthString = binary_to_list(base64:encode("\0user\0pass")),
-                    AuthPacket = "AUTH PLAIN " ++ AuthString ++ "\r\n",
-                    ?assertEqual({ok, AuthPacket}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "235 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"AUTH LOGIN should work", fun() ->
-                    Options = [
-                        {relay, "localhost"},
-                        {port, 9876},
-                        {hostname, "testing"},
-                        {username, "user"},
-                        {password, "pass"}
-                    ],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 AUTH LOGIN\r\n"),
-                    ?assertEqual({ok, "AUTH LOGIN\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "334 VXNlcm5hbWU6\r\n"),
-                    UserString = binary_to_list(base64:encode("user")),
-                    ?assertEqual({ok, UserString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "334 UGFzc3dvcmQ6\r\n"),
-                    PassString = binary_to_list(base64:encode("pass")),
-                    ?assertEqual({ok, PassString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "235 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"AUTH LOGIN should work with lowercase prompts", fun() ->
-                    Options = [
-                        {relay, "localhost"},
-                        {port, 9876},
-                        {hostname, "testing"},
-                        {username, "user"},
-                        {password, "pass"}
-                    ],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 AUTH LOGIN\r\n"),
-                    ?assertEqual({ok, "AUTH LOGIN\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "334 dXNlcm5hbWU6\r\n"),
-                    UserString = binary_to_list(base64:encode("user")),
-                    ?assertEqual({ok, UserString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "334 cGFzc3dvcmQ6\r\n"),
-                    PassString = binary_to_list(base64:encode("pass")),
-                    ?assertEqual({ok, PassString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "235 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"AUTH LOGIN should work with appended methods", fun() ->
-                    Options = [
-                        {relay, "localhost"},
-                        {port, 9876},
-                        {hostname, "testing"},
-                        {username, "user"},
-                        {password, "pass"}
-                    ],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 AUTH LOGIN\r\n"),
-                    ?assertEqual({ok, "AUTH LOGIN\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "334 VXNlcm5hbWU6 R6S4yT8pcW5sQjZD3CW61N0 - hssmtp\r\n"),
-                    UserString = binary_to_list(base64:encode("user")),
-                    ?assertEqual({ok, UserString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "334 UGFzc3dvcmQ6 R6S4yT8pcW5sQjZD3CW61N0 - hssmtp\r\n"),
-                    PassString = binary_to_list(base64:encode("pass")),
-                    ?assertEqual({ok, PassString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "235 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"AUTH CRAM-MD5 should work", fun() ->
-                    Options = [
-                        {relay, "localhost"},
-                        {port, 9876},
-                        {hostname, "testing"},
-                        {username, "user"},
-                        {password, "pass"}
-                    ],
-                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 AUTH CRAM-MD5\r\n"),
-                    ?assertEqual({ok, "AUTH CRAM-MD5\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    Seed = smtp_util:get_cram_string(smtp_util:guess_FQDN()),
-                    DecodedSeed = base64:decode_to_string(Seed),
-                    Digest = smtp_util:compute_cram_digest("pass", DecodedSeed),
-                    String = binary_to_list(base64:encode(list_to_binary(["user ", Digest]))),
-                    smtp_socket:send(X, "334 " ++ Seed ++ "\r\n"),
-                    {ok, Packet} = smtp_socket:recv(X, 0, 1000),
-                    CramDigest = smtp_util:trim_crlf(Packet),
-                    ?assertEqual(String, CramDigest),
-                    smtp_socket:send(X, "235 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"AUTH CRAM-MD5 should work", fun() ->
-                    Options = [
-                        {relay, <<"localhost">>},
-                        {port, 9876},
-                        {hostname, <<"testing">>},
-                        {username, <<"user">>},
-                        {password, <<"pass">>}
-                    ],
-                    {ok, _Pid} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>, <<"baz@bar.com">>], <<"hello world">>},
-                        Options
-                    ),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 AUTH CRAM-MD5\r\n"),
-                    ?assertEqual({ok, "AUTH CRAM-MD5\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    Seed = smtp_util:get_cram_string(smtp_util:guess_FQDN()),
-                    DecodedSeed = base64:decode_to_string(Seed),
-                    Digest = smtp_util:compute_cram_digest("pass", DecodedSeed),
-                    String = binary_to_list(base64:encode(list_to_binary(["user ", Digest]))),
-                    smtp_socket:send(X, "334 " ++ Seed ++ "\r\n"),
-                    {ok, Packet} = smtp_socket:recv(X, 0, 1000),
-                    CramDigest = smtp_util:trim_crlf(Packet),
-                    ?assertEqual(String, CramDigest),
-                    smtp_socket:send(X, "235 ok\r\n"),
-                    ?assertMatch(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"should bail when AUTH is required but not provided", fun() ->
-                    Options = [
-                        {relay, <<"localhost">>},
-                        {port, 9876},
-                        {hostname, <<"testing">>},
-                        {auth, always},
-                        {username, <<"user">>},
-                        {retries, 0},
-                        {password, <<"pass">>}
-                    ],
-                    {ok, Pid} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>, <<"baz@bar.com">>], <<"hello world">>},
-                        Options
-                    ),
-                    unlink(Pid),
-                    Monitor = erlang:monitor(process, Pid),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 8BITMIME\r\n"),
-                    ?assertEqual({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    receive
-                        {'DOWN', Monitor, _, _, Error} ->
-                            ?assertMatch(
-                                {error, retries_exceeded, {missing_requirement, _, auth}}, Error
-                            )
-                    end,
-                    ok
-                end}
-            end,
-            fun({ListenSock}) ->
-                {"should bail when AUTH is required but of an unsupported type", fun() ->
-                    Options = [
-                        {relay, <<"localhost">>},
-                        {port, 9876},
-                        {hostname, <<"testing">>},
-                        {auth, always},
-                        {username, <<"user">>},
-                        {retries, 0},
-                        {password, <<"pass">>}
-                    ],
-                    {ok, Pid} = send(
-                        {<<"test@foo.com">>, [<<"foo@bar.com">>, <<"baz@bar.com">>], <<"hello world">>},
-                        Options
-                    ),
-                    unlink(Pid),
-                    Monitor = erlang:monitor(process, Pid),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250-AUTH GSSAPI\r\n250 8BITMIME\r\n"),
-                    ?assertEqual({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    receive
-                        {'DOWN', Monitor, _, _, Error} ->
-                            ?assertMatch(
-                                {error, no_more_hosts, {permanent_failure, _, auth_failed}}, Error
-                            )
-                    end,
-                    ok
-                end}
-            end,
-            fun({_ListenSock}) ->
-                {"Connecting to a SSL socket directly should work", fun() ->
-                    application:ensure_all_started(gen_smtp),
-                    {ok, ListenSock} = smtp_socket:listen(ssl, 9877, [
-                        {certfile, "test/fixtures/mx1.example.com-server.crt"},
-                        {keyfile, "test/fixtures/mx1.example.com-server.key"}
-                    ]),
-                    Options = [
-                        {relay, <<"localhost">>},
-                        {port, 9877},
-                        {hostname, <<"testing">>},
-                        {ssl, true}
-                    ],
-                    {ok, _Pid} = send(
-                        {<<"test@foo.com">>, [<<"<foo@bar.com>">>, <<"baz@bar.com">>], <<"hello world">>},
-                        Options
-                    ),
-                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
-                    smtp_socket:send(X, "220 Some banner\r\n"),
-                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250-hostname\r\n250 AUTH CRAM-MD5\r\n"),
-                    ?assertEqual(
-                        {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
-                    ),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "RCPT TO:<baz@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "354 ok\r\n"),
-                    ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:send(X, "250 ok\r\n"),
-                    ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
-                    smtp_socket:close(ListenSock),
-                    ok
-                end}
-            end
-        ]}.
+      fun({ListenSock}) ->
+              {"AUTH PLAIN should work", fun() ->
+                                                 Options = [
+                                                            {relay, "localhost"},
+                                                            {port, 9876},
+                                                            {hostname, "testing"},
+                                                            {username, "user"},
+                                                            {password, "pass"}
+                                                           ],
+                                                 {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                 {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                 smtp_socket:send(X, "220 Some banner\r\n"),
+                                                 ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                 smtp_socket:send(X, "250-hostname\r\n250 AUTH PLAIN\r\n"),
+                                                 AuthString = binary_to_list(base64:encode("\0user\0pass")),
+                                                 AuthPacket = "AUTH PLAIN " ++ AuthString ++ "\r\n",
+                                                 ?assertEqual({ok, AuthPacket}, smtp_socket:recv(X, 0, 1000)),
+                                                 smtp_socket:send(X, "235 ok\r\n"),
+                                                 ?assertMatch(
+                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                   ),
+                                                 ok
+                                         end}
+      end,
+      fun({ListenSock}) ->
+              {"AUTH LOGIN should work", fun() ->
+                                                 Options = [
+                                                            {relay, "localhost"},
+                                                            {port, 9876},
+                                                            {hostname, "testing"},
+                                                            {username, "user"},
+                                                            {password, "pass"}
+                                                           ],
+                                                 {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                 {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                 smtp_socket:send(X, "220 Some banner\r\n"),
+                                                 ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                 smtp_socket:send(X, "250-hostname\r\n250 AUTH LOGIN\r\n"),
+                                                 ?assertEqual({ok, "AUTH LOGIN\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                 smtp_socket:send(X, "334 VXNlcm5hbWU6\r\n"),
+                                                 UserString = binary_to_list(base64:encode("user")),
+                                                 ?assertEqual({ok, UserString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                 smtp_socket:send(X, "334 UGFzc3dvcmQ6\r\n"),
+                                                 PassString = binary_to_list(base64:encode("pass")),
+                                                 ?assertEqual({ok, PassString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                 smtp_socket:send(X, "235 ok\r\n"),
+                                                 ?assertMatch(
+                                                    {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                   ),
+                                                 ok
+                                         end}
+      end,
+      fun({ListenSock}) ->
+              {"AUTH LOGIN should work with lowercase prompts", fun() ->
+                                                                        Options = [
+                                                                                   {relay, "localhost"},
+                                                                                   {port, 9876},
+                                                                                   {hostname, "testing"},
+                                                                                   {username, "user"},
+                                                                                   {password, "pass"}
+                                                                                  ],
+                                                                        {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                                        {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                        smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                        ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                        smtp_socket:send(X, "250-hostname\r\n250 AUTH LOGIN\r\n"),
+                                                                        ?assertEqual({ok, "AUTH LOGIN\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                        smtp_socket:send(X, "334 dXNlcm5hbWU6\r\n"),
+                                                                        UserString = binary_to_list(base64:encode("user")),
+                                                                        ?assertEqual({ok, UserString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                        smtp_socket:send(X, "334 cGFzc3dvcmQ6\r\n"),
+                                                                        PassString = binary_to_list(base64:encode("pass")),
+                                                                        ?assertEqual({ok, PassString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                        smtp_socket:send(X, "235 ok\r\n"),
+                                                                        ?assertMatch(
+                                                                           {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                          ),
+                                                                        ok
+                                                                end}
+      end,
+      fun({ListenSock}) ->
+              {"AUTH LOGIN should work with appended methods", fun() ->
+                                                                       Options = [
+                                                                                  {relay, "localhost"},
+                                                                                  {port, 9876},
+                                                                                  {hostname, "testing"},
+                                                                                  {username, "user"},
+                                                                                  {password, "pass"}
+                                                                                 ],
+                                                                       {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                                       {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                       smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                       ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                       smtp_socket:send(X, "250-hostname\r\n250 AUTH LOGIN\r\n"),
+                                                                       ?assertEqual({ok, "AUTH LOGIN\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                       smtp_socket:send(X, "334 VXNlcm5hbWU6 R6S4yT8pcW5sQjZD3CW61N0 - hssmtp\r\n"),
+                                                                       UserString = binary_to_list(base64:encode("user")),
+                                                                       ?assertEqual({ok, UserString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                       smtp_socket:send(X, "334 UGFzc3dvcmQ6 R6S4yT8pcW5sQjZD3CW61N0 - hssmtp\r\n"),
+                                                                       PassString = binary_to_list(base64:encode("pass")),
+                                                                       ?assertEqual({ok, PassString ++ "\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                       smtp_socket:send(X, "235 ok\r\n"),
+                                                                       ?assertMatch(
+                                                                          {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                         ),
+                                                                       ok
+                                                               end}
+      end,
+      fun({ListenSock}) ->
+              {"AUTH CRAM-MD5 should work", fun() ->
+                                                    Options = [
+                                                               {relay, "localhost"},
+                                                               {port, 9876},
+                                                               {hostname, "testing"},
+                                                               {username, "user"},
+                                                               {password, "pass"}
+                                                              ],
+                                                    {ok, _Pid} = send({"test@foo.com", ["foo@bar.com"], "hello world"}, Options),
+                                                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                    smtp_socket:send(X, "220 Some banner\r\n"),
+                                                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                    smtp_socket:send(X, "250-hostname\r\n250 AUTH CRAM-MD5\r\n"),
+                                                    ?assertEqual({ok, "AUTH CRAM-MD5\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                    Seed = smtp_util:get_cram_string(smtp_util:guess_FQDN()),
+                                                    DecodedSeed = base64:decode_to_string(Seed),
+                                                    Digest = smtp_util:compute_cram_digest("pass", DecodedSeed),
+                                                    String = binary_to_list(base64:encode(list_to_binary(["user ", Digest]))),
+                                                    smtp_socket:send(X, "334 " ++ Seed ++ "\r\n"),
+                                                    {ok, Packet} = smtp_socket:recv(X, 0, 1000),
+                                                    CramDigest = smtp_util:trim_crlf(Packet),
+                                                    ?assertEqual(String, CramDigest),
+                                                    smtp_socket:send(X, "235 ok\r\n"),
+                                                    ?assertMatch(
+                                                       {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                      ),
+                                                    ok
+                                            end}
+      end,
+      fun({ListenSock}) ->
+              {"AUTH CRAM-MD5 should work", fun() ->
+                                                    Options = [
+                                                               {relay, <<"localhost">>},
+                                                               {port, 9876},
+                                                               {hostname, <<"testing">>},
+                                                               {username, <<"user">>},
+                                                               {password, <<"pass">>}
+                                                              ],
+                                                    {ok, _Pid} = send(
+                                                                   {<<"test@foo.com">>, [<<"foo@bar.com">>, <<"baz@bar.com">>], <<"hello world">>},
+                                                                   Options
+                                                                  ),
+                                                    {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                    smtp_socket:send(X, "220 Some banner\r\n"),
+                                                    ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                    smtp_socket:send(X, "250-hostname\r\n250 AUTH CRAM-MD5\r\n"),
+                                                    ?assertEqual({ok, "AUTH CRAM-MD5\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                    Seed = smtp_util:get_cram_string(smtp_util:guess_FQDN()),
+                                                    DecodedSeed = base64:decode_to_string(Seed),
+                                                    Digest = smtp_util:compute_cram_digest("pass", DecodedSeed),
+                                                    String = binary_to_list(base64:encode(list_to_binary(["user ", Digest]))),
+                                                    smtp_socket:send(X, "334 " ++ Seed ++ "\r\n"),
+                                                    {ok, Packet} = smtp_socket:recv(X, 0, 1000),
+                                                    CramDigest = smtp_util:trim_crlf(Packet),
+                                                    ?assertEqual(String, CramDigest),
+                                                    smtp_socket:send(X, "235 ok\r\n"),
+                                                    ?assertMatch(
+                                                       {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                      ),
+                                                    ok
+                                            end}
+      end,
+      fun({ListenSock}) ->
+              {"should bail when AUTH is required but not provided", fun() ->
+                                                                             Options = [
+                                                                                        {relay, <<"localhost">>},
+                                                                                        {port, 9876},
+                                                                                        {hostname, <<"testing">>},
+                                                                                        {auth, always},
+                                                                                        {username, <<"user">>},
+                                                                                        {retries, 0},
+                                                                                        {password, <<"pass">>}
+                                                                                       ],
+                                                                             {ok, Pid} = send(
+                                                                                           {<<"test@foo.com">>, [<<"foo@bar.com">>, <<"baz@bar.com">>], <<"hello world">>},
+                                                                                           Options
+                                                                                          ),
+                                                                             unlink(Pid),
+                                                                             Monitor = erlang:monitor(process, Pid),
+                                                                             {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                             smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                             ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                             smtp_socket:send(X, "250-hostname\r\n250 8BITMIME\r\n"),
+                                                                             ?assertEqual({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                             receive
+                                                                                 {'DOWN', Monitor, _, _, Error} ->
+                                                                                     ?assertMatch(
+                                                                                        {error, retries_exceeded, {missing_requirement, _, auth}}, Error
+                                                                                       )
+                                                                             end,
+                                                                             ok
+                                                                     end}
+      end,
+      fun({ListenSock}) ->
+              {"should bail when AUTH is required but of an unsupported type", fun() ->
+                                                                                       Options = [
+                                                                                                  {relay, <<"localhost">>},
+                                                                                                  {port, 9876},
+                                                                                                  {hostname, <<"testing">>},
+                                                                                                  {auth, always},
+                                                                                                  {username, <<"user">>},
+                                                                                                  {retries, 0},
+                                                                                                  {password, <<"pass">>}
+                                                                                                 ],
+                                                                                       {ok, Pid} = send(
+                                                                                                     {<<"test@foo.com">>, [<<"foo@bar.com">>, <<"baz@bar.com">>], <<"hello world">>},
+                                                                                                     Options
+                                                                                                    ),
+                                                                                       unlink(Pid),
+                                                                                       Monitor = erlang:monitor(process, Pid),
+                                                                                       {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                                       smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                                       ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                       smtp_socket:send(X, "250-hostname\r\n250-AUTH GSSAPI\r\n250 8BITMIME\r\n"),
+                                                                                       ?assertEqual({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                                       receive
+                                                                                           {'DOWN', Monitor, _, _, Error} ->
+                                                                                               ?assertMatch(
+                                                                                                  {error, no_more_hosts, {permanent_failure, _, auth_failed}}, Error
+                                                                                                 )
+                                                                                       end,
+                                                                                       ok
+                                                                               end}
+      end,
+      fun({_ListenSock}) ->
+              {"Connecting to a SSL socket directly should work", fun() ->
+                                                                          application:ensure_all_started(gen_smtp),
+                                                                          {ok, ListenSock} = smtp_socket:listen(ssl, 9877, [
+                                                                                                                            {certfile, "test/fixtures/mx1.example.com-server.crt"},
+                                                                                                                            {keyfile, "test/fixtures/mx1.example.com-server.key"}
+                                                                                                                           ]),
+                                                                          Options = [
+                                                                                     {relay, <<"localhost">>},
+                                                                                     {port, 9877},
+                                                                                     {hostname, <<"testing">>},
+                                                                                     {ssl, true}
+                                                                                    ],
+                                                                          {ok, _Pid} = send(
+                                                                                         {<<"test@foo.com">>, [<<"<foo@bar.com>">>, <<"baz@bar.com">>], <<"hello world">>},
+                                                                                         Options
+                                                                                        ),
+                                                                          {ok, X} = smtp_socket:accept(ListenSock, 1000),
+                                                                          smtp_socket:send(X, "220 Some banner\r\n"),
+                                                                          ?assertMatch({ok, "EHLO testing\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                          smtp_socket:send(X, "250-hostname\r\n250 AUTH CRAM-MD5\r\n"),
+                                                                          ?assertEqual(
+                                                                             {ok, "MAIL FROM:<test@foo.com>\r\n"}, smtp_socket:recv(X, 0, 1000)
+                                                                            ),
+                                                                          smtp_socket:send(X, "250 ok\r\n"),
+                                                                          ?assertMatch({ok, "RCPT TO:<foo@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                          smtp_socket:send(X, "250 ok\r\n"),
+                                                                          ?assertMatch({ok, "RCPT TO:<baz@bar.com>\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                          smtp_socket:send(X, "250 ok\r\n"),
+                                                                          ?assertMatch({ok, "DATA\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                          smtp_socket:send(X, "354 ok\r\n"),
+                                                                          ?assertMatch({ok, "hello world\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                          ?assertMatch({ok, ".\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                          smtp_socket:send(X, "250 ok\r\n"),
+                                                                          ?assertMatch({ok, "QUIT\r\n"}, smtp_socket:recv(X, 0, 1000)),
+                                                                          smtp_socket:close(ListenSock),
+                                                                          ok
+                                                                  end}
+      end
+     ]}.
 
 extension_parse_test_() ->
     [
-        {"parse extensions", fun() ->
-            Res = parse_extensions(
-                <<"250-smtp.example.com\r\n250-PIPELINING\r\n250-SIZE 20971520\r\n250-VRFY\r\n250-ETRN\r\n250-STARTTLS\r\n250-AUTH CRAM-MD5 PLAIN DIGEST-MD5 LOGIN\r\n250-AUTH=CRAM-MD5 PLAIN DIGEST-MD5 LOGIN\r\n250-ENHANCEDSTATUSCODES\r\n250-8BITMIME\r\n250 DSN">>,
-                []
-            ),
-            ?assertEqual(true, proplists:get_value(<<"PIPELINING">>, Res)),
-            ?assertEqual(<<"20971520">>, proplists:get_value(<<"SIZE">>, Res)),
-            ?assertEqual(true, proplists:get_value(<<"VRFY">>, Res)),
-            ?assertEqual(true, proplists:get_value(<<"ETRN">>, Res)),
-            ?assertEqual(true, proplists:get_value(<<"STARTTLS">>, Res)),
-            ?assertEqual(
-                <<"CRAM-MD5 PLAIN DIGEST-MD5 LOGIN">>, proplists:get_value(<<"AUTH">>, Res)
-            ),
-            ?assertEqual(true, proplists:get_value(<<"ENHANCEDSTATUSCODES">>, Res)),
-            ?assertEqual(true, proplists:get_value(<<"8BITMIME">>, Res)),
-            ?assertEqual(true, proplists:get_value(<<"DSN">>, Res)),
-            ?assertEqual(10, length(Res)),
-            ok
-        end}
+     {"parse extensions", fun() ->
+                                  Res = parse_extensions(
+                                          <<"250-smtp.example.com\r\n250-PIPELINING\r\n250-SIZE 20971520\r\n250-VRFY\r\n250-ETRN\r\n250-STARTTLS\r\n250-AUTH CRAM-MD5 PLAIN DIGEST-MD5 LOGIN\r\n250-AUTH=CRAM-MD5 PLAIN DIGEST-MD5 LOGIN\r\n250-ENHANCEDSTATUSCODES\r\n250-8BITMIME\r\n250 DSN">>,
+                                          []
+                                         ),
+                                  ?assertEqual(true, proplists:get_value(<<"PIPELINING">>, Res)),
+                                  ?assertEqual(<<"20971520">>, proplists:get_value(<<"SIZE">>, Res)),
+                                  ?assertEqual(true, proplists:get_value(<<"VRFY">>, Res)),
+                                  ?assertEqual(true, proplists:get_value(<<"ETRN">>, Res)),
+                                  ?assertEqual(true, proplists:get_value(<<"STARTTLS">>, Res)),
+                                  ?assertEqual(
+                                     <<"CRAM-MD5 PLAIN DIGEST-MD5 LOGIN">>, proplists:get_value(<<"AUTH">>, Res)
+                                    ),
+                                  ?assertEqual(true, proplists:get_value(<<"ENHANCEDSTATUSCODES">>, Res)),
+                                  ?assertEqual(true, proplists:get_value(<<"8BITMIME">>, Res)),
+                                  ?assertEqual(true, proplists:get_value(<<"DSN">>, Res)),
+                                  ?assertEqual(10, length(Res)),
+                                  ok
+                          end}
     ].
 
 -endif.
