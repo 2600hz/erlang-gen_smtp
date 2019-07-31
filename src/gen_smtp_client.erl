@@ -26,20 +26,20 @@
 -module(gen_smtp_client).
 
 -define(DEFAULT_OPTIONS, [
-		{ssl, false}, % whether to connect on 465 in ssl mode
-		{tls, if_available}, % always, never, if_available
-		{tls_options, [{versions, ['tlsv1', 'tlsv1.1', 'tlsv1.2']}]}, % used in ssl:connect, http://erlang.org/doc/man/ssl.html
-		{auth, if_available},
-		{hostname, smtp_util:guess_FQDN()},
-		{retries, 1} % how many retries per smtp host on temporary failure
-	]).
+                          {ssl, false}, % whether to connect on 465 in ssl mode
+                          {tls, if_available}, % always, never, if_available
+                          {tls_options, [{versions, ['tlsv1', 'tlsv1.1', 'tlsv1.2']}]}, % used in ssl:connect, http://erlang.org/doc/man/ssl.html
+                          {auth, if_available},
+                          {hostname, smtp_util:guess_FQDN()},
+                          {retries, 1} % how many retries per smtp host on temporary failure
+                         ]).
 
 -define(AUTH_PREFERENCE, [
-		"CRAM-MD5",
-		"LOGIN",
-		"PLAIN",
-		"XOAUTH2"
-	]).
+                          "CRAM-MD5",
+                          "LOGIN",
+                          "PLAIN",
+                          "XOAUTH2"
+                         ]).
 
 -define(TIMEOUT, 1200000).
 
@@ -121,7 +121,7 @@
         {error, retries_exceeded | send, host_failure()}.
 
 
--spec send(Email :: email(), Options :: options()) -> {'ok', pid()} | {'error', validate_options_error()}.
+-spec send(Email :: email(), Options :: options()) -> {'ok', pid()} | {'error', validate_options_error()} | pid().
 %% @doc Send an email in a non-blocking fashion via a spawned_linked process.
 %% The process will exit abnormally on a send failure.
 send(Email, Options) ->
@@ -130,28 +130,13 @@ send(Email, Options) ->
 %% @doc Send an email nonblocking and invoke a callback with the result of the send.
 %% The callback will receive either `{ok, Receipt}' where Receipt is the SMTP server's receipt
 %% identifier,  `{error, Type, Message}' or `{exit, ExitReason}', as the single argument.
--spec send(Email :: email(), Options :: options(), Callback :: callback() | 'undefined') -> {'ok', pid()} | {'error', validate_options_error()}.
+-spec send(Email :: email(), Options :: options(), Callback :: callback() | 'undefined') -> {'ok', pid()} | {'error', validate_options_error()} | pid().
 send(Email, Options, Callback) ->
 	NewOptions = lists:ukeymerge(1, lists:sort(Options),
 		lists:sort(?DEFAULT_OPTIONS)),
 	case check_options(NewOptions) of
 		ok when is_function(Callback) ->
-			spawn(fun() ->
-						process_flag(trap_exit, true),
-						Pid = spawn_link(fun() ->
-									send_it_nonblock(Email, NewOptions, Callback)
-							end
-						),
-						receive
-							{'EXIT', Pid, Reason} ->
-								case Reason of
-									X when X == normal; X == shutdown ->
-										ok;
-									Error ->
-										Callback({exit, Error})
-								end
-						end
-				end);
+                spawn_to_callback(Email, NewOptions, Callback);
 		ok ->
 			Pid = spawn_link(fun () ->
 						send_it_nonblock(Email, NewOptions, Callback)
@@ -161,6 +146,25 @@ send(Email, Options, Callback) ->
 		{error, Reason} ->
 			{error, Reason}
 	end.
+
+-spec spawn_to_callback(Email :: email(), Options :: options(), Callback :: callback()) -> pid().
+spawn_to_callback(Email, NewOptions, Callback) ->
+    spawn(fun() ->
+                  process_flag(trap_exit, true),
+                  Pid = spawn_link(fun() ->
+                                           send_it_nonblock(Email, NewOptions, Callback)
+                                   end
+                                  ),
+                  receive
+                      {'EXIT', Pid, Reason} ->
+                          case Reason of
+                              X when X == normal; X == shutdown ->
+                                  ok;
+                              Error ->
+                                  Callback({exit, Error})
+                          end
+                  end
+          end).
 
 -spec send_blocking(Email :: email(), Options :: options()) ->
                            binary() |
