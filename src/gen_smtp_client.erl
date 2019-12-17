@@ -100,12 +100,12 @@
 -opaque smtp_client_socket() :: #smtp_client_socket{}.
 
 -type callback() :: fun(
-              (
-               {exit, any()}
-              | smtp_session_error()
-              | {ok, binary()}
-              ) -> any()
-                       ).
+                  (
+                   {exit, any()}
+                  | smtp_session_error()
+                  | {ok, binary()}
+                  ) -> any()
+                           ).
 
 %% Smth that is thrown from inner SMTP functions
 
@@ -287,23 +287,23 @@ close(#smtp_client_socket{socket = Socket}) ->
           binary()
               | smtp_session_error().
 send_it(Email, Options) ->
-    RelayDomain = to_string(proplists:get_value(relay, Options)),
-    MXRecords =
-        case proplists:get_value(no_mx_lookups, Options) of
-            true ->
-                [];
-            _ ->
-                smtp_util:mxlookup(RelayDomain)
-        end,
-    trace(Options, "MX records for ~s are ~p~n", [RelayDomain, MXRecords]),
-    Hosts =
-        case MXRecords of
-            [] ->
-                                                % maybe we're supposed to relay to a host directly
-                [{0, RelayDomain}];
-            _ ->
-                MXRecords
-        end,
+    NoMXLookups = proplists:get_value(no_mx_lookups, Options, false),
+    Relay = case proplists:get_value(relay, Options) of
+                Domain when is_binary(Domain)
+                            andalso NoMXLookups =:= 'true' ->
+                    [{Domain, [{0, to_string(Domain)}]}];
+                Domain when is_binary(Domain) ->
+                    [{Domain, smtp_util:mxlookup(to_string(Domain))}];
+                Domains when is_list(Domains)
+                             andalso NoMXLookups =:= 'true' ->
+                    [{Domain, {0, to_string(Domain)}} || Domain <- Domains];
+                Domains when is_list(Domains) ->
+                    [{Domain, smtp_util:mxlookup(to_string(Domain))} || Domain <- Domains]
+            end,
+    [trace(Options, "MX records for ~s are ~p~n", [RelayDomain, MXRecords])
+     || {RelayDomain, MXRecords} <- Relay
+    ],
+    Hosts = lists:flatmap(fun({_, MXRecords}) -> MXRecords end, Relay),
     case try_smtp_sessions(Hosts, Options, []) of
         {error, _, _} = Error ->
             Error;
