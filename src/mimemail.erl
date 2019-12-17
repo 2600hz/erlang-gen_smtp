@@ -55,7 +55,11 @@
 -export([rfc2047_utf8_encode/1]).
 -endif.
 
--export([encode/1, encode/2, decode/2, decode/1, get_header_value/2, get_header_value/3, parse_headers/1]).
+-export([encode/1, encode/2, encode_part/1
+        ,decode/2, decode/1
+        ,get_header_value/2, get_header_value/3
+        ,parse_headers/1
+        ]).
 
 -export_type([mimetuple/0,
               mime_type/0,
@@ -168,6 +172,10 @@ encode({Type, Subtype, Headers, ContentTypeParams, Parts}, Options) ->
 encode(_, _) ->
 	io:format("Not a mime-decoded DATA~n"),
 	erlang:error(non_mime).
+
+-spec encode_part(Part :: mimetuple()) -> binary().
+encode_part(Part) ->
+    encode_component_part(Part).
 
 
 decode_headers(Headers, _, none) ->
@@ -963,6 +971,9 @@ rfc2047_utf8_encode([], Acc, _WordLen, Char) ->
 %% ASCII characters dont encode except space, ?, _, =, and .
 rfc2047_utf8_encode([C|T], Acc, WordLen, Char) when C > 32 andalso C < 127 andalso C /= 32
     andalso C /= $? andalso C /= $_ andalso C /= $= andalso C /= $. ->
+    rfc2047_utf8_encode(T, Char ++ Acc, WordLen+length(Char), [C]);
+%% When decoding we accept tab, this is needed for re-encoding.
+rfc2047_utf8_encode([C|T], Acc, WordLen, Char) when C =:= 9 ->
     rfc2047_utf8_encode(T, Char ++ Acc, WordLen+length(Char), [C]);
 %% Encode all other ASCII
 rfc2047_utf8_encode([C|T], Acc, WordLen, Char) when C >= 32 andalso C < 127 ->
