@@ -144,8 +144,9 @@ extract_listener(Config, DefaultConfig) ->
     Family = proplists:get_value(family, NewConfig),
     Hostname = proplists:get_value(domain, NewConfig),
     Protocol = proplists:get_value(protocol, NewConfig),
+    ProtocolOptions = proplists:get_value(protocol_options, NewConfig, []),
     SessionOptions = proplists:get_value(sessionoptions, NewConfig, []),
-    ListenOptions = [binary, {ip, IP}, Family],
+    ListenOptions = [binary, {ip, IP}, Family | ProtocolOptions],
     case smtp_socket:listen(Protocol, Port, ListenOptions) of
         {ok, ListenSocket} -> %%Create first accepting process
             error_logger:info_msg("~p listening on ~p:~p via ~p~n", [?MODULE, IP, Port, Protocol]),

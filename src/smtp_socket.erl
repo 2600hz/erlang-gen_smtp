@@ -35,10 +35,11 @@
                               {port, 0}]).
 -define(SSL_LISTEN_OPTIONS, [ {active, false},
                               {backlog, 30},
+                              {keyfile, "server.key"},
                               {certfile, "server.crt"},
+                              {cacertfile, "ca.crt"},
                               {depth, 0},
                               {keepalive, true},
-                              {keyfile, "server.key"},
                               {packet, line},
                               {reuse_sessions, false},
                               {reuseaddr, true},

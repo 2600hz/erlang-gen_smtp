@@ -603,20 +603,10 @@ handle_request({<<"STARTTLS">>, <<>>}, #state{socket = Socket, module = Module, 
 	case has_extension(Extensions, "STARTTLS") of
 		{true, _} ->
 			smtp_socket:send(Socket, "220 OK\r\n"),
-			Options1 = case proplists:get_value(certfile, Options) of
-				undefined ->
-					[];
-				CertFile ->
-					[{certfile, CertFile}]
-			end,
-			Options2 = case proplists:get_value(keyfile, Options) of
-				undefined ->
-					Options1;
-				KeyFile ->
-					[{keyfile, KeyFile} | Options1]
-			end,
+            SSLOptionsFilter = [certfile, keyfile, cacertfile],
+            SSLOptions = lists:filter(fun({K,_}) -> lists:member(K, SSLOptionsFilter) end, Options),
 			% TODO: certfile and keyfile should be at configurable locations
-			case smtp_socket:to_ssl_server(Socket, Options2, 5000) of
+			case smtp_socket:to_ssl_server(Socket, SSLOptions, 5000) of
 				{ok, NewSocket} ->
 					%io:format("SSL negotiation sucessful~n"),
 					{ok, State#state{socket = NewSocket, envelope=undefined,
