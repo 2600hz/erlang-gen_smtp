@@ -60,6 +60,7 @@
 -endif.
 
 -export([encode/1, encode/2, decode/2, decode/1, get_header_value/2, get_header_value/3, parse_headers/1]).
+-export([encode_part/1]).
 -export([encode_quoted_printable/1, decode_quoted_printable/1]).
 
 -export_type([
@@ -221,6 +222,10 @@ encode({Type, Subtype, Headers, ContentTypeParams, Parts}, Options) ->
 encode(_, _) ->
     ?LOG_DEBUG("Not a mime-decoded DATA", ?LOGGER_META),
     erlang:error(non_mime).
+
+-spec encode_part(Part :: mimetuple()) -> iolist().
+encode_part(Part) ->
+    encode_component_part(Part).
 
 decode_headers(Headers, _, none) ->
     Headers;
