@@ -271,10 +271,10 @@ send_it(Email, Options) ->
                     [{Domain, [{0, Domain}]} || Domain <- Domains];
                 [List | _ ] = Domains when is_list(List) ->
                     [{Domain, smtp_util:mxlookup(Domain)} || Domain <- Domains];
-                Domains when NoMXLookups =:= 'true' ->
-                    [{Domain, [{0, Domain}]} || Domain <- Domains];
-                Domains ->
-                    [{Domain, smtp_util:mxlookup(Domain)} || Domain <- Domains]
+                Domain when NoMXLookups =:= 'true' ->
+                    [{Domain, [{0, Domain}]}];
+                Domain ->
+                    [{Domain, smtp_util:mxlookup(Domain)}]
             end,
 	[trace(Options, "MX records for ~s are ~p~n", [RelayDomain, MXRecords])
       || {RelayDomain, MXRecords} <- Relay 
