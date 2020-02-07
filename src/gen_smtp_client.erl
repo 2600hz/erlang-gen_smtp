@@ -249,14 +249,23 @@ send_it(Email, Options) ->
     Relay = case proplists:get_value(relay, Options) of
                 Domain when is_binary(Domain)
                   andalso NoMXLookups =:= 'true' ->
-                    [{Domain, [{0, to_string(Domain)}]}];
+                    [{to_string(Domain), [{0, to_string(Domain)}]}];
                 Domain when is_binary(Domain) ->
-                    [{Domain, smtp_util:mxlookup(to_string(Domain))}];
-                Domains when is_list(Domains)
+                    [{to_string(Domain), smtp_util:mxlookup(to_string(Domain))}];
+                [Bin | _ ] = Domains when is_binary(Bin)
                   andalso NoMXLookups =:= 'true' ->
-                    [{Domain, {0, to_string(Domain)}} || Domain <- Domains];
-                Domains when is_list(Domains) ->
-                    [{Domain, smtp_util:mxlookup(to_string(Domain))} || Domain <- Domains]
+                    [{to_string(Domain), {0, to_string(Domain)}} || Domain <- Domains];
+                [Bin | _ ] = Domains when is_binary(Bin) ->
+                    [{to_string(Domain), smtp_util:mxlookup(to_string(Domain))} || Domain <- Domains];
+                [List | _ ] = Domains when is_list(List)
+                  andalso NoMXLookups =:= 'true' ->
+                    [{Domain, [{0, Domain}]} || Domain <- Domains];
+                [List | _ ] = Domains when is_list(List) ->
+                    [{Domain, smtp_util:mxlookup(Domain)} || Domain <- Domains];
+                Domains when NoMXLookups =:= 'true' ->
+                    [{Domain, [{0, Domain}]} || Domain <- Domains];
+                Domains ->
+                    [{Domain, smtp_util:mxlookup(Domain)} || Domain <- Domains]
             end,
 	[trace(Options, "MX records for ~s are ~p~n", [RelayDomain, MXRecords])
       || {RelayDomain, MXRecords} <- Relay 
