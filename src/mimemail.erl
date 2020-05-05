@@ -1181,12 +1181,23 @@ encode_folded_header(Rest, Acc) ->
     end.
 
 encode_header_value(H, Value) when
-    H =:= <<"To">>;
-    H =:= <<"Cc">>;
-    H =:= <<"Bcc">>;
     H =:= <<"Reply-To">>;
     H =:= <<"From">>
 ->
+    encode_header_address(Value);
+encode_header_value(H, Value) when
+    H =:= <<"To">>;
+    H =:= <<"Cc">>;
+    H =:= <<"Bcc">>
+->
+    encode_header_addresses(Value);
+encode_header_value(H, Value) when H =:= <<"Content-Type">>; H =:= <<"Content-Disposition">> ->
+    % Parameters are already encoded.
+    Value;
+encode_header_value(_, Value) ->
+    rfc2047_utf8_encode(Value).
+
+encode_header_address(Value) ->
     {ok, Addresses} = smtp_util:parse_rfc5322_addresses(Value),
     {Names, Emails} = lists:unzip(Addresses),
     NewNames = lists:map(
@@ -1199,12 +1210,16 @@ encode_header_value(H, Value) when
         end,
         Names
     ),
-    smtp_util:combine_rfc822_addresses(lists:zip(NewNames, Emails));
-encode_header_value(H, Value) when H =:= <<"Content-Type">>; H =:= <<"Content-Disposition">> ->
-    % Parameters are already encoded.
-    Value;
-encode_header_value(_, Value) ->
-    rfc2047_utf8_encode(Value).
+    smtp_util:combine_rfc822_addresses(lists:zip(NewNames, Emails)).
+
+encode_header_addresses(Value) when is_binary(Value) ->
+    encode_header_address(Value);
+encode_header_addresses([]) ->
+	<<>>;
+encode_header_addresses([Value]) ->
+	encode_header_addresses(Value);
+encode_header_addresses([Value|Values]) ->
+	iolist_to_binary([encode_header_addresses(Value) | [[<<", ">>, encode_header_addresses(B)] || B <- Values]]).
 
 encode_component(_Type, _SubType, _Headers, Params, Body) when is_list(Body) ->
     % is this a multipart component?
