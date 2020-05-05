@@ -806,12 +806,21 @@ encode_folded_header(Rest, Acc) ->
 
 encode_header_value(H, Value) when H =:= <<"To">>; H =:= <<"Cc">>; H =:= <<"Bcc">>;
 								   H =:= <<"Reply-To">>; H =:= <<"From">> ->
+	encode_addresses(Value);
+encode_header_value(_, Value) ->
+	rfc2047_utf8_encode(Value).
+
+encode_addresses(Value) when is_binary(Value) ->
 	{ok, Addresses} = smtp_util:parse_rfc822_addresses(Value),
 	{Names, Emails} = lists:unzip(Addresses),
 	NewNames = lists:map(fun rfc2047_utf8_encode/1, Names),
 	smtp_util:combine_rfc822_addresses(lists:zip(NewNames, Emails));
-encode_header_value(_, Value) ->
-	rfc2047_utf8_encode(Value).
+encode_addresses([]) ->
+	<<>>;
+encode_addresses([Value]) ->
+	encode_addresses(Value);
+encode_addresses([Value|Values]) ->
+	iolist_to_binary([encode_addresses(Value)] ++ [[<<", ">>, encode_addresses(B)] || B <- Values]).
 
 encode_component(_Type, _SubType, Headers, Params, Body) ->
 	if
