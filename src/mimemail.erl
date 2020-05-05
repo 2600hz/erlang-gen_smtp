@@ -867,56 +867,46 @@ encode_folded_header(Rest, Acc) ->
 
 encode_header_value(H, Value) when H =:= <<"To">>; H =:= <<"Cc">>; H =:= <<"Bcc">>;
                                    H =:= <<"Reply-To">>; H =:= <<"From">> ->
-    {ok, Addresses} = smtp_util:parse_rfc5322_addresses(Value),
-    {Names, Emails} = lists:unzip(Addresses),
-    NewNames = lists:map(
-                 fun(undefined) -> undefined;
-                    (Name) ->
-                         %% `Name' contains codepoints, but we need bytes
-                         rfc2047_utf8_encode(unicode:characters_to_binary(Name))
-                 end, Names),
-    smtp_util:combine_rfc822_addresses(lists:zip(NewNames, Emails));
+    encode_addresses(Value);
 encode_header_value(_, Value) ->
     rfc2047_utf8_encode(Value).
 
-encode_component(_Type, _SubType, _Headers, Params, Body) when is_list(Body) ->
-                                                % is this a multipart component?
-    Boundary = proplists:get_value(<<"boundary">>, maps:get(content_type_params, Params)),
-    [<<>>] ++  % blank line before start of component
-	lists:flatmap(
-          fun(Part) ->
-                  [list_to_binary([<<"--">>, Boundary])] ++ % start with the boundary
-                      encode_component_part(Part)
-          end,
-          Body
-         ) ++ [list_to_binary([<<"--">>, Boundary, <<"--">>])] % final boundary (with /--$/)
-        ++ [<<>>]; % blank line at the end of the multipart component
-encode_component(_Type, _SubType, Headers, _Params, Body) ->
-                                                % or an inline component?
+encode_component(_Type, _SubType, Headers, Params, Body) ->
+    if
+        is_list(Body) -> % is this a multipart component?
+            Boundary = proplists:get_value(<<"boundary">>, proplists:get_value(<<"content-type-params">>, Params)),
+            [<<>>] ++  % blank line before start of component
+                lists:flatmap(
+                  fun(Part) ->
+                          [list_to_binary([<<"--">>, Boundary])] ++ % start with the boundary
+                              encode_component_part(Part)
+                  end,
+                  Body
+                 ) ++ [list_to_binary([<<"--">>, Boundary, <<"--">>])] % final boundary (with /--$/)
+                ++ [<<>>]; % blank line at the end of the multipart component
+        true -> % or an inline component?
                                                 %encode_component_part({Type, SubType, Headers, Params, Body})
-    encode_body(
-      get_header_value(<<"Content-Transfer-Encoding">>, Headers),
-      [Body]
-     ).
+            encode_body(
+              get_header_value(<<"Content-Transfer-Encoding">>, Headers),
+              [Body]
+             )
+    end.
 
-encode_component_part({<<"multipart">>, SubType, Headers, PartParams, Body}) ->
-    {FixedParams, FixedHeaders} = ensure_content_headers(<<"multipart">>, SubType, PartParams, Headers, Body, false),
-    encode_headers(FixedHeaders) ++
-	encode_component(<<"multipart">>, SubType, FixedHeaders, FixedParams, Body);
-encode_component_part({Type, SubType, Headers, PartParams, Body}) ->
-    PartData = case Body of
-                   {_,_,_,_,_} -> encode_component_part(Body);
-                   String      -> [String]
-               end,
-    {_FixedParams, FixedHeaders} = ensure_content_headers(Type, SubType, PartParams, Headers, Body, false),
-    encode_headers(FixedHeaders) ++ [<<>>] ++
-	encode_body(
-          get_header_value(<<"Content-Transfer-Encoding">>, FixedHeaders),
-          PartData
-	 );
 encode_component_part(Part) ->
     ?log(debug, "encode_component_part couldn't match Part to: ~p~n", [Part]),
     [].
+
+encode_addresses(Value) when is_binary(Value) ->
+    {ok, Addresses} = smtp_util:parse_rfc822_addresses(Value),
+    {Names, Emails} = lists:unzip(Addresses),
+    NewNames = lists:map(fun rfc2047_utf8_encode/1, Names),
+    smtp_util:combine_rfc822_addresses(lists:zip(NewNames, Emails));
+encode_addresses([]) ->
+    <<>>;
+encode_addresses([Value]) ->
+    encode_addresses(Value);
+encode_addresses([Value|Values]) ->
+    iolist_to_binary([encode_addresses(Value)] ++ [[<<", ">>, encode_addresses(B)] || B <- Values]).
 
 encode_body(undefined, Body) ->
     Body;
