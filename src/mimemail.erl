@@ -652,6 +652,433 @@ decode_base64(Body) ->
     base64:mime_decode(Body).
 
 decode_quoted_printable(Body) ->
+    case binstr:strpos(Body, "\r\n") of
+        0 ->
+            decode_quoted_printable(Body, <<>>, []);
+        Index ->
+            decode_quoted_printable(binstr:substr(Body, 1, Index +1), binstr:substr(Body, Index + 2), [])
+    end.
+
+decode_quoted_printable(<<>>, <<>>, Acc) ->
+    list_to_binary(lists:reverse(Acc));
+decode_quoted_printable(Line, Rest, Acc) ->
+    case binstr:strpos(Rest, "\r\n") of
+        0 ->
+            decode_quoted_printable(Rest, <<>>, [decode_quoted_printable_line(Line, []) | Acc]);
+        Index ->
+                                                %io:format("next line ~p~nnext rest ~p~n", [binstr:substr(Rest, 1, Index +1), binstr:substr(Rest, Index + 2)]),
+            decode_quoted_printable(binstr:substr(Rest, 1, Index +1), binstr:substr(Rest, Index + 2),
+                                    [decode_quoted_printable_line(Line, []) | Acc])
+    end.
+
+decode_quoted_printable_line(<<>>, Acc) ->
+    lists:reverse(Acc);
+decode_quoted_printable_line(<<$\r, $\n>>, Acc) ->
+    lists:reverse(["\r\n" | Acc]);
+decode_quoted_printable_line(<<$=, C, T/binary>>, Acc) when C =:= $\s; C =:= $\t ->
+    case binstr:all(fun(X) -> X =:= $\s orelse X =:= $\t end, T) of
+        true ->
+            lists:reverse(Acc);
+        false ->
+            throw(badchar)
+    end;
+decode_quoted_printable_line(<<$=, $\r, $\n>>, Acc) ->
+    lists:reverse(Acc);
+decode_quoted_printable_line(<<$=, A:2/binary, T/binary>>, Acc) ->
+                                                %<<X:1/binary, Y:1/binary>> = A,
+    case binstr:all(fun(C) -> (C >= $0 andalso C =< $9) orelse (C >= $A andalso C =< $F) orelse (C >= $a andalso C =< $f) end, A) of
+        true ->
+            {ok, [C | []], []} = io_lib:fread("~16u", binary_to_list(A)),
+            decode_quoted_printable_line(T, [C | Acc]);
+        false ->
+            throw(badchar)
+    end;
+decode_quoted_printable_line(<<$=>>, Acc) ->
+                                                % soft newline
+    lists:reverse(Acc);
+decode_quoted_printable_line(<<H, T/binary>>, Acc) when H >= $!, H =< $< ->
+    decode_quoted_printable_line(T, [H | Acc]);
+decode_quoted_printable_line(<<H, T/binary>>, Acc) when H >= $>, H =< $~ ->
+    decode_quoted_printable_line(T, [H | Acc]);
+decode_quoted_printable_line(<<H, T/binary>>, Acc) when H =:= $\s; H =:= $\t ->
+                                                % if the rest of the line is whitespace, truncate it
+    case binstr:all(fun(X) -> X =:= $\s orelse X =:= $\t end, T) of
+        true ->
+            lists:reverse(Acc);
+        false ->
+            decode_quoted_printable_line(T, [H | Acc])
+    end;
+decode_quoted_printable_line(<<H, T/binary>>, Acc) ->
+    decode_quoted_printable_line(T, [H| Acc]).
+
+check_headers(Headers) ->
+    Checked = [<<"MIME-Version">>, <<"Date">>, <<"From">>, <<"Message-ID">>, <<"References">>, <<"Subject">>],
+    check_headers(Checked, lists:reverse(Headers)).
+
+check_headers([], Headers) ->
+    lists:reverse(Headers);
+check_headers([Header | Tail], Headers) ->
+    case get_header_value(Header, Headers) of
+        undefined when Header == <<"MIME-Version">> ->
+            check_headers(Tail, [{<<"MIME-Version">>, <<"1.0">>} | Headers]);
+        undefined when Header == <<"Date">> ->
+            check_headers(Tail, [{<<"Date">>, list_to_binary(smtp_util:rfc5322_timestamp())} | Headers]);
+        undefined when Header == <<"From">> ->
+            erlang:error(missing_from);
+        undefined when Header == <<"Message-ID">> ->
+            check_headers(Tail, [{<<"Message-ID">>, list_to_binary(smtp_util:generate_message_id())} | Headers]);
+        undefined when Header == <<"References">> ->
+            case get_header_value(<<"In-Reply-To">>, Headers) of
+                undefined ->
+                    check_headers(Tail, Headers); % ok, whatever
+                ReplyID ->
+                    check_headers(Tail, [{<<"References">>, ReplyID} | Headers])
+            end;
+        References when Header == <<"References">> ->
+                                                % check if the in-reply-to header, if present, is in references
+            case get_header_value(<<"In-Reply-To">>, Headers) of
+                undefined ->
+                    check_headers(Tail, Headers); % ok, whatever
+                ReplyID ->
+                    case binstr:strpos(binstr:to_lower(References), binstr:to_lower(ReplyID)) of
+                        0 ->
+                                                % okay, tack on the reply-to to the end of References
+                            check_headers(Tail, [{<<"References">>, list_to_binary([References, " ", ReplyID])} | proplists:delete(<<"References">>, Headers)]);
+                        _Index ->
+                            check_headers(Tail, Headers) % nothing to do
+                    end
+            end;
+        _ ->
+            check_headers(Tail, Headers)
+    end.
+
+ensure_content_headers(Type, SubType, Parameters, Headers, Body, Toplevel) ->
+    CheckHeaders = [<<"Content-Type">>, <<"Content-Disposition">>, <<"Content-Transfer-Encoding">>],
+    ensure_content_headers(CheckHeaders, Type, SubType, Parameters, lists:reverse(Headers), Body, Toplevel).
+
+ensure_content_headers([], _, _, Parameters, Headers, _, _) ->
+    {Parameters, lists:reverse(Headers)};
+ensure_content_headers([Header | Tail], Type, SubType, Parameters, Headers, Body, Toplevel) ->
+    case get_header_value(Header, Headers) of
+        undefined when Header == <<"Content-Type">>, ((Type == <<"text">> andalso SubType =/= <<"plain">>) orelse Type =/= <<"text">>) ->
+                                                % no content-type header, and its not text/plain
+            CT = io_lib:format("~s/~s", [Type, SubType]),
+            CTP = case Type of
+                      <<"multipart">> ->
+                          Boundary = case proplists:get_value(<<"boundary">>, proplists:get_value(<<"content-type-params">>, Parameters, [])) of
+                                         undefined ->
+                                             list_to_binary(smtp_util:generate_message_boundary());
+                                         B ->
+                                             B
+                                     end,
+                          [{<<"boundary">>, Boundary} | proplists:delete(<<"boundary">>, proplists:get_value(<<"content-type-params">>, Parameters, []))];
+                      <<"text">> ->
+                          Charset = case proplists:get_value(<<"charset">>, proplists:get_value(<<"content-type-params">>, Parameters, [])) of
+                                        undefined ->
+                                            guess_charset(Body);
+                                        C ->
+                                            C
+                                    end,
+                          [{<<"charset">>, Charset} | proplists:delete(<<"charset">>, proplists:get_value(<<"content-type-params">>, Parameters, []))];
+                      _ ->
+                          proplists:get_value(<<"content-type-params">>, Parameters, [])
+                  end,
+
+                                                %CTP = proplists:get_value(<<"content-type-params">>, Parameters, [guess_charset(Body)]),
+            CTH = binstr:join([CT | encode_parameters(CTP)], ";"),
+            NewParameters = [{<<"content-type-params">>, CTP} | proplists:delete(<<"content-type-params">>, Parameters)],
+            ensure_content_headers(Tail, Type, SubType, NewParameters, [{<<"Content-Type">>, CTH} | Headers], Body, Toplevel);
+        undefined when Header == <<"Content-Type">> ->
+                                                % no content-type header and its text/plain
+            Charset = case proplists:get_value(<<"charset">>, proplists:get_value(<<"content-type-params">>, Parameters, [])) of
+                          undefined ->
+                              guess_charset(Body);
+                          C ->
+                              C
+                      end,
+            case Charset of
+                <<"us-ascii">> ->
+                                                % the default
+                    ensure_content_headers(Tail, Type, SubType, Parameters, Headers, Body, Toplevel);
+                _ ->
+                    CTP = [{<<"charset">>, Charset} | proplists:delete(<<"charset">>, proplists:get_value(<<"content-type-params">>, Parameters, []))],
+                    CTH = binstr:join([<<"text/plain">> | encode_parameters(CTP)], ";"),
+                    NewParameters = [{<<"content-type-params">>, CTP} | proplists:delete(<<"content-type-params">>, Parameters)],
+                    ensure_content_headers(Tail, Type, SubType, NewParameters, [{<<"Content-Type">>, CTH} | Headers], Body, Toplevel)
+            end;
+        undefined when Header == <<"Content-Transfer-Encoding">>, Type =/= <<"multipart">> ->
+            Enc = case proplists:get_value(<<"transfer-encoding">>, Parameters) of
+                      undefined ->
+                          guess_best_encoding(Body);
+                      Value ->
+                          Value
+                  end,
+            case Enc of
+                <<"7bit">> ->
+                    ensure_content_headers(Tail, Type, SubType, Parameters, Headers, Body, Toplevel);
+                _ ->
+                    ensure_content_headers(Tail, Type, SubType, Parameters, [{<<"Content-Transfer-Encoding">>, Enc} | Headers], Body, Toplevel)
+            end;
+        undefined when Header == <<"Content-Disposition">>, Toplevel == false ->
+            CD = proplists:get_value(<<"disposition">>, Parameters, <<"inline">>),
+            CDP = proplists:get_value(<<"disposition-params">>, Parameters, []),
+            CDH = binstr:join([CD | encode_parameters(CDP)], ";"),
+            ensure_content_headers(Tail, Type, SubType, Parameters, [{<<"Content-Disposition">>, CDH} | Headers], Body, Toplevel);
+        _ ->
+            ensure_content_headers(Tail, Type, SubType, Parameters, Headers, Body, Toplevel)
+    end.
+
+guess_charset(Body) ->
+    case binstr:all(fun(X) -> X < 128 end, Body) of
+        true -> <<"us-ascii">>;
+        false -> <<"utf-8">>
+    end.
+
+guess_best_encoding(<<Body:200/binary, Rest/binary>>) when Rest =/= <<>> ->
+    guess_best_encoding(Body);
+guess_best_encoding(<<>>) ->
+    <<"7bit">>;
+guess_best_encoding(Body) ->
+    Size = byte_size(Body),
+                                                % get only the allowed ascii characters
+                                                % TODO - this might not be the complete list
+    FilteredSize = length([X || <<X>> <= Body, ((X > 31 andalso X < 127) orelse X == $\r orelse X == $\n)]),
+
+    Percent = round((FilteredSize / Size) * 100),
+
+                                                %based on the % of printable characters, choose an encoding
+    if
+        Percent == 100 ->
+            <<"7bit">>;
+        Percent > 80 ->
+            <<"quoted-printable">>;
+        true ->
+            <<"base64">>
+    end.
+
+encode_parameters([[]]) ->
+    [];
+encode_parameters(Parameters) ->
+    [encode_parameter(Parameter) || Parameter <- Parameters].
+
+encode_parameter({X, Y}) ->
+    case escape_tspecial(Y, false, <<>>) of
+        {true, Special} -> [X, $=, $", Special, $"];
+        false -> [X, $=, Y]
+    end.
+
+                                                % See also: http://www.ietf.org/rfc/rfc2045.txt section 5.1
+escape_tspecial(<<>>, false, _Acc) ->
+    false;
+escape_tspecial(<<>>, IsSpecial, Acc) ->
+    {IsSpecial, Acc};
+escape_tspecial(<<C, Rest/binary>>, _IsSpecial, Acc) when C =:= $" ->
+    escape_tspecial(Rest, true, <<Acc/binary, $\\, $">>);
+escape_tspecial(<<C, Rest/binary>>, _IsSpecial, Acc) when C =:= $\\ ->
+    escape_tspecial(Rest, true, <<Acc/binary, $\\, $\\>>);
+escape_tspecial(<<C, Rest/binary>>, _IsSpecial, Acc)
+  when C =:= $(; C =:= $); C =:= $<; C =:= $>; C =:= $@;
+       C =:= $,; C =:= $;; C =:= $:; C =:= $/; C =:= $[;
+       C =:= $]; C =:= $?; C =:= $=; C =:= $\s ->
+    escape_tspecial(Rest, true, <<Acc/binary, C>>);
+escape_tspecial(<<C, Rest/binary>>, IsSpecial, Acc) ->
+    escape_tspecial(Rest, IsSpecial, <<Acc/binary, C>>).
+
+encode_headers([]) ->
+    [];
+encode_headers([{Key, Value}|T] = _Headers) ->
+    EncodedHeader = maybe_encode_folded_header(Key, list_to_binary([Key,": ",encode_header_value(Key, Value)])),
+    [EncodedHeader | encode_headers(T)].
+
+maybe_encode_folded_header(H, Hdr) when H =:= <<"To">>; H =:= <<"Cc">>; H =:= <<"Bcc">>;
+                                        H =:= <<"Reply-To">>; H =:= <<"From">> ->
+    Hdr;
+maybe_encode_folded_header(_H, Hdr) ->
+    encode_folded_header(Hdr, <<>>).
+
+encode_folded_header(Rest, Acc) ->
+    case binstr:split(Rest, <<$;>>, 2) of
+        [_] ->
+            <<Acc/binary, Rest/binary>>;
+        [Before, After] ->
+            NewPart = case After of
+                          <<$\t,_Rest/binary>> ->
+                              <<Before/binary, ";\r\n">>;
+                          _ ->
+                              <<Before/binary, ";\r\n\t">>
+                      end,
+            encode_folded_header(After, <<Acc/binary, NewPart/binary>>)
+    end.
+
+encode_header_value(H, Value) when H =:= <<"To">>; H =:= <<"Cc">>; H =:= <<"Bcc">>;
+                                   H =:= <<"Reply-To">>; H =:= <<"From">> ->
+    encode_addresses(Value);
+encode_header_value(_, Value) ->
+    rfc2047_utf8_encode(Value).
+
+encode_addresses(Value) when is_binary(Value) ->
+    {ok, Addresses} = smtp_util:parse_rfc822_addresses(Value),
+    {Names, Emails} = lists:unzip(Addresses),
+    NewNames = lists:map(fun rfc2047_utf8_encode/1, Names),
+    smtp_util:combine_rfc822_addresses(lists:zip(NewNames, Emails));
+encode_addresses([]) ->
+    <<>>;
+encode_addresses([Value]) ->
+    encode_addresses(Value);
+encode_addresses([Value|Values]) ->
+    iolist_to_binary([encode_addresses(Value)] ++ [[<<", ">>, encode_addresses(B)] || B <- Values]).
+
+encode_component(_Type, _SubType, Headers, Params, Body) ->
+    if
+        is_list(Body) -> % is this a multipart component?
+            Boundary = proplists:get_value(<<"boundary">>, proplists:get_value(<<"content-type-params">>, Params)),
+            [<<>>] ++  % blank line before start of component
+                lists:flatmap(
+                  fun(Part) ->
+                          [list_to_binary([<<"--">>, Boundary])] ++ % start with the boundary
+                              encode_component_part(Part)
+                  end,
+                  Body
+                 ) ++ [list_to_binary([<<"--">>, Boundary, <<"--">>])] % final boundary (with /--$/)
+                ++ [<<>>]; % blank line at the end of the multipart component
+        true -> % or an inline component?
+                                                %encode_component_part({Type, SubType, Headers, Params, Body})
+            encode_body(
+              get_header_value(<<"Content-Transfer-Encoding">>, Headers),
+              [Body]
+             )
+    end.
+
+encode_component_part(Part) ->
+    case Part of
+        {<<"multipart">>, SubType, Headers, PartParams, Body} ->
+            {FixedParams, FixedHeaders} = ensure_content_headers(<<"multipart">>, SubType, PartParams, Headers, Body, false),
+            encode_headers(FixedHeaders) ++ [<<>>] ++
+                encode_component(<<"multipart">>, SubType, FixedHeaders, FixedParams, Body);
+        {Type, SubType, Headers, PartParams, Body} ->
+            PartData = case Body of
+                           {_,_,_,_,_} -> encode_component_part(Body);
+                           String      -> [String]
+                       end,
+            {_FixedParams, FixedHeaders} = ensure_content_headers(Type, SubType, PartParams, Headers, Body, false),
+            encode_headers(FixedHeaders) ++ [<<>>] ++
+                encode_body(
+                  get_header_value(<<"Content-Transfer-Encoding">>, FixedHeaders),
+                  PartData
+                 );
+        _ ->
+            io:format("encode_component_part couldn't match Part to: ~p~n", [Part]),
+            []
+    end.
+
+encode_body(undefined, Body) ->
+    Body;
+encode_body(Type, Body) ->
+    case binstr:to_lower(Type) of
+        <<"quoted-printable">> ->
+            [InnerBody] = Body,
+            encode_quoted_printable(InnerBody);
+        <<"base64">> ->
+            [InnerBody] = Body,
+            wrap_to_76(base64:encode(InnerBody));
+        _ -> Body
+    end.
+
+wrap_to_76(String) ->
+    [wrap_to_76(String, [])].
+
+wrap_to_76(<<>>, Acc) ->
+    list_to_binary(lists:reverse(Acc));
+wrap_to_76(<<Head:76/binary, Tail/binary>>, Acc) ->
+    wrap_to_76(Tail, [<<"\r\n">>, Head | Acc]);
+wrap_to_76(Head, Acc) ->
+    list_to_binary(lists:reverse([<<"\r\n">>, Head | Acc])).
+
+encode_quoted_printable(Body) ->
+    [encode_quoted_printable(Body, [], 0)].
+
+encode_quoted_printable(Body, Acc, L) when L >= 75 ->
+    LastLine = case string:str(Acc, "\n") of
+                   0 ->
+                       Acc;
+                   Index ->
+                       string:substr(Acc, 1, Index-1)
+               end,
+                                                %Len = length(LastLine),
+    case string:str(LastLine, " ") of
+        0 when L =:= 75 ->
+                                                % uh-oh, no convienient whitespace, just cram a soft newline in
+            encode_quoted_printable(Body, [$\n, $\r, $= | Acc], 0);
+        1 when L =:= 75 ->
+                                                % whitespace is the last character we wrote
+            encode_quoted_printable(Body, [$\n, $\r, $= | Acc], 0);
+        SIndex when (L - 75) < SIndex ->
+                                                % okay, we can safely stick some whitespace in
+            Prefix = string:substr(Acc, 1, SIndex-1),
+            Suffix = string:substr(Acc, SIndex),
+            NewAcc = lists:concat([Prefix, "\n\r=", Suffix]),
+            encode_quoted_printable(Body, NewAcc, 0);
+        _ ->
+                                                % worst case, we're over 75 characters on the line
+                                                % and there's no obvious break points, just stick one
+                                                % in at position 75 and call it good. However, we have
+                                                % to be very careful not to stick the soft newline in
+                                                % the middle of an existing quoted-printable escape.
+
+                                                % TODO - fix this to be less stupid
+            I = 3, % assume we're at most 3 over our cutoff
+            Prefix = string:substr(Acc, 1, I),
+            Suffix = string:substr(Acc, I+1),
+            NewAcc = lists:concat([Prefix, "\n\r=", Suffix]),
+            encode_quoted_printable(Body, NewAcc, 0)
+    end;
+encode_quoted_printable(<<>>, Acc, _L) ->
+    list_to_binary(lists:reverse(Acc));
+encode_quoted_printable(<<$=, T/binary>> , Acc, L) ->
+    encode_quoted_printable(T, [$D, $3, $= | Acc], L+3);
+encode_quoted_printable(<<$\r, $\n, T/binary>> , Acc, _L) ->
+    encode_quoted_printable(T, [$\n, $\r | Acc], 0);
+encode_quoted_printable(<<H, T/binary>>, Acc, L) when H >= $!, H =< $< ->
+    encode_quoted_printable(T, [H | Acc], L+1);
+encode_quoted_printable(<<H, T/binary>>, Acc, L) when H >= $>, H =< $~ ->
+    encode_quoted_printable(T, [H | Acc], L+1);
+encode_quoted_printable(<<H, $\r, $\n, T/binary>>, Acc, _L) when H == $\s; H == $\t ->
+    [A, B] = lists:flatten(io_lib:format("~2.16.0B", [H])),
+    encode_quoted_printable(T, [$\n, $\r, B, A, $= | Acc], 0);
+encode_quoted_printable(<<H, T/binary>>, Acc, L) when H == $\s; H == $\t ->
+    encode_quoted_printable(T, [H | Acc], L+1);
+encode_quoted_printable(<<H, T/binary>>, Acc, L) ->
+    [A, B] = lists:flatten(io_lib:format("~2.16.0B", [H])),
+    encode_quoted_printable(T, [B, A, $= | Acc], L+3).
+
+get_default_encoding() ->
+    <<"utf-8//IGNORE">>.
+
+                                                % convert some common invalid character names into the correct ones
+fix_encoding(Encoding) when Encoding == <<"utf8">>; Encoding == <<"UTF8">> ->
+    <<"UTF-8">>;
+fix_encoding(Encoding) ->
+    Encoding.
+
+
+%% @doc Encode a binary or list according to RFC 2047. Input is
+%% assumed to be in UTF-8 encoding.
+rfc2047_utf8_encode(undefined) -> undefined;
+rfc2047_utf8_encode(B) when is_binary(B) ->
+    rfc2047_utf8_encode(binary_to_list(B));
+rfc2047_utf8_encode([]) ->
+    [];
+rfc2047_utf8_encode(Text) ->
+    %% Don't escape when all characters are ASCII printable
+    case is_ascii_printable(Text) of
+        'true' -> Text;
+        'false' -> rfc2047_utf8_encode(Text, lists:reverse("=?UTF-8?Q?"), 10, [])
+    end.
+
+decode_base64(Body) ->
+    base64:mime_decode(Body).
+
+decode_quoted_printable(Body) ->
     decode_quoted_printable(Body, false, <<>>, <<>>).
 
 %% End of Body
