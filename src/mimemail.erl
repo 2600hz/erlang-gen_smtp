@@ -181,10 +181,9 @@ encode(_, _) ->
     ?log(debug, "Not a mime-decoded DATA~n"),
     erlang:error(non_mime).
 
--spec encode_part(Part :: mimetuple()) -> binary().
+-spec encode_part(Part :: mimetuple()) -> iodata().
 encode_part(Part) ->
     encode_component_part(Part).
-
 
 decode_headers(Headers, _, none) ->
     Headers;
@@ -791,9 +790,9 @@ valid_7bit(Body) ->
             %% So: (all except `\r` and `\n` in 1-127 range) OR (`\r\n`)
             case re:run(Body, "^([\x01-\x09\x0b-\x0c\x0e-\x7f]|(\r\n))*$", [{capture, none}]) of
                 match -> not has_lines_over_998(Body);
-                nomatch -> false
-            end
-    end.
+                            nomatch -> false
+                       end
+                        end.
 
 %% @doc If `Body' has at least one line (ending with `\r\n') that is longer than 998 chars
 has_lines_over_998(Body) ->
