@@ -100,12 +100,12 @@
 -opaque smtp_client_socket() :: #smtp_client_socket{}.
 
 -type callback() :: fun(
-                    (
-                     {exit, any()}
-                    | smtp_session_error()
-                    | {ok, binary()}
-                    ) -> any()
-                             ).
+                      (
+                       {exit, any()}
+                      | smtp_session_error()
+                      | {ok, binary()}
+                      ) -> any()
+                               ).
 
 %% Smth that is thrown from inner SMTP functions
 
@@ -180,25 +180,6 @@ send(Email, Options, Callback) ->
         {error, Reason} ->
             {error, Reason}
     end.
-
--spec spawn_to_callback(Email :: email(), Options :: options(), Callback :: callback()) -> pid().
-spawn_to_callback(Email, NewOptions, Callback) ->
-    spawn(fun() ->
-                  process_flag(trap_exit, true),
-                  Pid = spawn_link(fun() ->
-                                           send_it_nonblock(Email, NewOptions, Callback)
-                                   end
-                                  ),
-                  receive
-                      {'EXIT', Pid, Reason} ->
-                          case Reason of
-                              X when X == normal; X == shutdown ->
-                                  ok;
-                              Error ->
-                                  Callback({exit, Error})
-                          end
-                  end
-          end).
 
 -spec send_blocking(Email :: email(), Options :: options()) ->
           binary()
