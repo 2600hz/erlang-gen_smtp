@@ -24,25 +24,25 @@
 
 -module(smtp_util).
 -export([
-    mxlookup/1,
-    guess_FQDN/0,
-    compute_cram_digest/2,
-    get_cram_string/1,
-    trim_crlf/1,
-    rfc5322_timestamp/0,
-    zone/0,
-    generate_message_id/0,
-    parse_rfc822_addresses/1,
-    parse_rfc5322_addresses/1,
-    combine_rfc822_addresses/1,
-    generate_message_boundary/0
-]).
+         mxlookup/1,
+         guess_FQDN/0,
+         compute_cram_digest/2,
+         get_cram_string/1,
+         trim_crlf/1,
+         rfc5322_timestamp/0,
+         zone/0,
+         generate_message_id/0,
+         parse_rfc822_addresses/1,
+         parse_rfc5322_addresses/1,
+         combine_rfc822_addresses/1,
+         generate_message_boundary/0
+        ]).
 
 -include_lib("kernel/include/inet.hrl").
 
 -type name_address() :: {Name :: string() | undefined, Address :: string()}.
 
-% Use parse_rfc5322_addresses/1 instead
+                                                % Use parse_rfc5322_addresses/1 instead
 -deprecated([{parse_rfc822_addresses, 1}]).
 
 %% @doc returns a sorted list of mx servers for `Domain', lowest distance first
@@ -55,17 +55,27 @@ mxlookup(Domain) ->
     end,
     case lists:keyfind(nameserver, 1, inet_db:get_rc()) of
         false ->
-            % we got no nameservers configured, suck in resolv.conf
+                                                % we got no nameservers configured, suck in resolv.conf
             inet_config:do_load_resolv(os:type(), longnames);
         _ ->
             ok
     end,
     case inet_res:lookup(Domain, in, mx) of
         [] ->
-            lists:map(fun(X) -> {10, inet_parse:ntoa(X)} end, inet_res:lookup(Domain, in, a));
+            alookup(Domain);
         Result ->
             lists:sort(Result)
     end.
+
+alookup(Domain) ->
+    case inet_res:lookup(Domain, in, a) of
+        [] -> hostent(Domain);
+        As -> [{10, inet_parse:ntoa(A)} || A <- As]
+    end.
+
+hostent(Domain) ->
+    {'ok', #hostent{h_addr_list=Addrs}} = inet:gethostbyname(Domain),
+    lists:uniq([{10, inet_parse:ntoa(A)} || A <- Addrs]).
 
 %% @doc guess the current host's fully qualified domain name, on error return "localhost"
 -spec guess_FQDN() -> string().
@@ -77,9 +87,9 @@ guess_FQDN_1(_Hostname, {ok, #hostent{h_name = FQDN}}) ->
     FQDN;
 guess_FQDN_1(Hostname, {error, nxdomain = Error}) ->
     error_logger:info_msg(
-        "~p could not get FQDN for ~p (error ~p), using \"localhost\" instead.",
-        [?MODULE, Error, Hostname]
-    ),
+      "~p could not get FQDN for ~p (error ~p), using \"localhost\" instead.",
+      [?MODULE, Error, Hostname]
+     ),
     "localhost".
 
 %% @doc Compute the CRAM digest of `Key' and `Data'
@@ -100,14 +110,14 @@ hmac_md5(Key, Data) ->
 -spec get_cram_string(Hostname :: string()) -> string().
 get_cram_string(Hostname) ->
     binary_to_list(
-        base64:encode(
-            lists:flatten(
-                io_lib:format("<~B.~B@~s>", [
-                    rand:uniform(4294967295), rand:uniform(4294967295), Hostname
-                ])
-            )
-        )
-    ).
+      base64:encode(
+        lists:flatten(
+          io_lib:format("<~B.~B@~s>", [
+                                       rand:uniform(4294967295), rand:uniform(4294967295), Hostname
+                                      ])
+         )
+       )
+     ).
 
 %% @doc Trim \r\n from `String'
 -spec trim_crlf(String :: string()) -> string().
@@ -116,19 +126,19 @@ trim_crlf(String) ->
 
 -define(DAYS, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]).
 -define(MONTHS, [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec"
-]).
+                 "Jan",
+                 "Feb",
+                 "Mar",
+                 "Apr",
+                 "May",
+                 "Jun",
+                 "Jul",
+                 "Aug",
+                 "Sep",
+                 "Oct",
+                 "Nov",
+                 "Dec"
+                ]).
 %% @doc Generate a RFC 5322 timestamp based on the current time
 rfc5322_timestamp() ->
     {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:local_time(),
@@ -136,8 +146,8 @@ rfc5322_timestamp() ->
     DoW = lists:nth(NDay, ?DAYS),
     MoY = lists:nth(Month, ?MONTHS),
     io_lib:format("~s, ~b ~s ~b ~2..0b:~2..0b:~2..0b ~s", [
-        DoW, Day, MoY, Year, Hour, Minute, Second, zone()
-    ]).
+                                                           DoW, Day, MoY, Year, Hour, Minute, Second, zone()
+                                                          ]).
 
 %% @doc Calculate the current timezone and format it like -0400. Borrowed from YAWS.
 zone() ->
@@ -145,7 +155,7 @@ zone() ->
     LocalTime = calendar:universal_time_to_local_time(Time),
     DiffSecs =
         calendar:datetime_to_gregorian_seconds(LocalTime) -
-            calendar:datetime_to_gregorian_seconds(Time),
+        calendar:datetime_to_gregorian_seconds(Time),
     zone((DiffSecs / 3600) * 100).
 
 %% Ugly reformatting code to get times like +0000 and -1300
@@ -159,21 +169,21 @@ zone(Val) when Val >= 0 ->
 generate_message_id() ->
     FQDN = guess_FQDN(),
     Md5 = [
-        io_lib:format("~2.16.0b", [X])
-     || <<X>> <= erlang:md5(term_to_binary([unique_id(), FQDN]))
-    ],
+           io_lib:format("~2.16.0b", [X])
+           || <<X>> <= erlang:md5(term_to_binary([unique_id(), FQDN]))
+          ],
     io_lib:format("<~s@~s>", [Md5, FQDN]).
 
 %% @doc Generate a unique MIME message boundary
 generate_message_boundary() ->
     FQDN = guess_FQDN(),
     [
-        "_=",
-        [
-            io_lib:format("~2.36.0b", [X])
-         || <<X>> <= erlang:md5(term_to_binary([unique_id(), FQDN]))
-        ],
-        "=_"
+     "_=",
+     [
+      io_lib:format("~2.36.0b", [X])
+      || <<X>> <= erlang:md5(term_to_binary([unique_id(), FQDN]))
+     ],
+     "=_"
     ].
 
 unique_id() ->
@@ -202,31 +212,31 @@ opt_quoted(B) when is_binary(B) ->
     opt_quoted(binary_to_list(B));
 opt_quoted(S) when is_list(S) ->
     NoControls = lists:map(
-        fun
-            (C) when C < 32 -> 32;
-            (C) -> C
-        end,
-        S
-    ),
+                   fun
+                       (C) when C < 32 -> 32;
+                       (C) -> C
+                          end,
+                   S
+                  ),
     case lists:any(fun is_special/1, NoControls) of
         false ->
             NoControls;
         true ->
             lists:flatten([
-                $",
-                lists:map(
-                    fun
-                        ($\") -> [$\\, $\"];
-                        ($\\) -> [$\\, $\\];
-                        (C) -> C
-                    end,
-                    NoControls
-                ),
-                $"
-            ])
+                           $",
+                           lists:map(
+                             fun
+                                 ($\") -> [$\\, $\"];
+                                 ($\\) -> [$\\, $\\];
+                                 (C) -> C
+                                    end,
+                             NoControls
+                            ),
+                           $"
+                          ])
     end.
 
-% See https://www.w3.org/Protocols/rfc822/3_Lexical.html#z2
+                                                % See https://www.w3.org/Protocols/rfc822/3_Lexical.html#z2
 is_special($() -> true;
 is_special($)) -> true;
 is_special($<) -> true;
@@ -238,11 +248,11 @@ is_special($:) -> true;
 is_special($\\) -> true;
 is_special($\") -> true;
 is_special($.) -> true;
-is_special($[) -> true;
-is_special($]) -> true;
-% special for some smtp servers
-is_special($') -> true;
-is_special(_) -> false.
+               is_special($[) -> true;
+               is_special($]) -> true;
+                                                % special for some smtp servers
+               is_special($') -> true;
+               is_special(_) -> false.
 
 %% @doc Parse list of mail addresses in RFC-5322#section-3.4 `mailbox-list' format
 -spec parse_rfc5322_addresses(string() | binary()) -> {ok, [name_address()]} | {error, any()}.
@@ -252,8 +262,8 @@ parse_rfc5322_addresses(S) when is_list(S) ->
     case smtp_rfc5322_scan:string(S) of
         {ok, Tokens, _L} ->
             F = fun({Name, {addr, Local, Domain}}) ->
-                {Name, Local ++ "@" ++ Domain}
-            end,
+                        {Name, Local ++ "@" ++ Domain}
+                end,
             case smtp_rfc5322_parse:parse(Tokens) of
                 {ok, {mailbox_list, AddrList}} ->
                     {ok, lists:map(F, AddrList)};

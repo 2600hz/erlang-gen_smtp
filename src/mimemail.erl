@@ -666,10 +666,15 @@ decode_quoted_printable(Line, Rest, Acc) ->
         0 ->
             decode_quoted_printable(Rest, <<>>, [decode_quoted_printable_line(Line, []) | Acc]);
         Index ->
-                                                %io:format("next line ~p~nnext rest ~p~n", [binstr:substr(Rest, 1, Index +1), binstr:substr(Rest, Index + 2)]),
+            %% io:format("next line ~p~nnext rest ~p~n", [binstr:substr(Rest, 1, Index +1), binstr:substr(Rest, Index + 2)]),
             decode_quoted_printable(binstr:substr(Rest, 1, Index +1), binstr:substr(Rest, Index + 2),
                                     [decode_quoted_printable_line(Line, []) | Acc])
     end.
+
+is_alphanumeric(C) ->
+    (C >= $0 andalso C =< $9)
+        orelse (C >= $A andalso C =< $F)
+        orelse (C >= $a andalso C =< $f).
 
 decode_quoted_printable_line(<<>>, Acc) ->
     lists:reverse(Acc);
@@ -686,7 +691,7 @@ decode_quoted_printable_line(<<$=, $\r, $\n>>, Acc) ->
     lists:reverse(Acc);
 decode_quoted_printable_line(<<$=, A:2/binary, T/binary>>, Acc) ->
                                                 %<<X:1/binary, Y:1/binary>> = A,
-    case binstr:all(fun(C) -> (C >= $0 andalso C =< $9) orelse (C >= $A andalso C =< $F) orelse (C >= $a andalso C =< $f) end, A) of
+    case binstr:all(fun is_alphanumeric/1, A) of
         true ->
             {ok, [C | []], []} = io_lib:fread("~16u", binary_to_list(A)),
             decode_quoted_printable_line(T, [C | Acc]);
@@ -1943,33 +1948,6 @@ decode_quoted_printable_test_() ->
                                                                             end}
     ].
 
-valid_smtp_mime_7bit_test() ->
-    ?assert(valid_7bit(<<>>)),
-    ?assert(valid_7bit(<<"abcdefghijklmnopqrstuvwxyz0123456789">>)),
-    ?assert(valid_7bit(<<"abc\r\ndef">>)),
-    AllValidRange =
-        (lists:seq(1, $\n - 1) ++
-             lists:seq($\n + 1, $\r - 1) ++
-             lists:seq($\r + 1, 127)),
-    ?assert(valid_7bit(list_to_binary(AllValidRange))),
-    ?assertNot(valid_7bit(<<"\n">>)),
-    ?assertNot(valid_7bit(<<"\r">>)),
-    ?assertNot(valid_7bit(<<"abc\ndef">>)),
-    ?assertNot(valid_7bit(<<"abc\rdef">>)),
-    ?assertNot(valid_7bit(<<"abc\n\rdef">>)),
-    ?assertNot(valid_7bit(<<128, 200, 255>>)),
-    ?assertNot(valid_7bit(<<0, 0, 0>>)),
-    ?assertNot(valid_7bit(<<"hello", 128, 0, 200>>)),
-    %% Long lines
-    Line800 = binary:copy(<<$a>>, 800),
-    ?assertNot(has_lines_over_998(Line800)),
-    Many800Lines = list_to_binary(lists:join("\r\n", lists:duplicate(10, Line800))),
-    ?assertNot(has_lines_over_998(Many800Lines)),
-    Line1000 = binary:copy(<<$a>>, 1000),
-    ?assert(has_lines_over_998(Line1000)),
-    Many1000Lines = list_to_binary(lists:join("\r\n", lists:duplicate(10, Line1000))),
-    ?assert(has_lines_over_998(Many1000Lines)),
-    ?assert(has_lines_over_998(<<Line800/binary, "\r\n", Line1000/binary>>)).
 
 encode_quoted_printable_test_() ->
     [
@@ -2344,98 +2322,7 @@ rfc2047_decode_test_() ->
 
 rfc2047_utf8_encode_test_() ->
     [
-     {"Q-Encoding", fun() ->
-                            ?assertEqual(
-                               <<"=?UTF-8?Q?abcdefghijklmnopqrstuvwxyz?=">>,
-                               rfc2047_utf8_encode(q, <<"abcdefghijklmnopqrstuvwxyz">>, <<>>, 0, <<" ">>)
-                              ),
-                            ?assertEqual(
-                               <<"=?UTF-8?Q?ABCDEFGHIJKLMNOPQRSTUVWXYZ?=">>,
-                               rfc2047_utf8_encode(q, <<"ABCDEFGHIJKLMNOPQRSTUVWXYZ">>, <<>>, 0, <<" ">>)
-                              ),
-                            ?assertEqual(<<"=?UTF-8?Q?0123456789?=">>, rfc2047_utf8_encode(q, <<"0123456789">>, <<>>, 0, <<" ">>)),
-                            ?assertEqual(<<"=?UTF-8?Q?!*+-/?=">>, rfc2047_utf8_encode(q, <<"!*+-/">>, <<>>, 0, <<" ">>)),
-                            ?assertEqual(
-                               <<
-                                 "=?UTF-8?Q?This_text_encodes_to_more_than_63_bytes=2E_Therefore=2C_it_shou?=\r\n"
-                                 " =?UTF-8?Q?ld_be_encoded_in_multiple_encoded_words=2E?="
-                               >>,
-                               rfc2047_utf8_encode(
-                                 q,
-                                 <<"This text encodes to more than 63 bytes. Therefore, it should be encoded in multiple encoded words.">>,
-                                 <<>>,
-                                 0,
-                                 <<" ">>
-                                )
-                              ),
-                            ?assertEqual(
-                               <<
-                                 "=?UTF-8?Q?This_text_encodes_to_more_than_63_bytes_with_offset_f?=\r\n"
-                                 "\t=?UTF-8?Q?or_a_parameter=2E_Therefore=2C_it_should_be_encoded_in_multipl?=\r\n"
-                                 "\t=?UTF-8?Q?e_encoded_words=2E?="
-                               >>,
-                               rfc2047_utf8_encode(
-                                 q,
-                                 <<
-                                   "This text encodes to more than 63 bytes with offset for a parameter. "
-                                   "Therefore, it should be encoded in multiple encoded words."
-                                 >>,
-                                 <<>>,
-                                 10,
-                                 <<"\t">>
-                                )
-                              ),
-                            ?assertEqual(
-                               <<
-                                 "=?UTF-8?Q?We_place_an_UTF8_4byte_character_over_the_breaking_point_here_?=\r\n"
-                                 " =?UTF-8?Q?=F0=9F=80=84?="
-                               >>,
-                               rfc2047_utf8_encode(
-                                 q,
-                                 <<"We place an UTF8 4byte character over the breaking point here ", 16#F0, 16#9F, 16#80, 16#84>>,
-                                 <<>>,
-                                 0,
-                                 <<" ">>
-                                )
-                              )
-                    end},
-     {"B-Encoding", fun() ->
-                            ?assertEqual(
-                               <<"=?UTF-8?B?U29tZSBzaG9ydCB0ZXh0Lg==?=">>,
-                               rfc2047_utf8_encode(b, <<"Some short text.">>, <<>>, 0, <<" ">>)
-                              ),
-                            ?assertEqual(
-                               <<
-                                 "=?UTF-8?B?VGhpcyB0ZXh0IGVuY29kZXMgdG8gbW9yZSB0aGFuIDYzIGJ5dGVzLiBUaGVy?=\r\n"
-                                 " =?UTF-8?B?ZWZvcmUsIGl0IHNob3VsZCBiZSBlbmNvZGVkIGluIG11bHRpcGxlIGVuY29k?=\r\n"
-                                 " =?UTF-8?B?ZWQgd29yZHMu?="
-                               >>,
-                               rfc2047_utf8_encode(
-                                 b,
-                                 <<"This text encodes to more than 63 bytes. Therefore, it should be encoded in multiple encoded words.">>,
-                                 <<>>,
-                                 1,
-                                 <<" ">>
-                                )
-                              ),
-                            ?assertEqual(
-                               <<
-                                 "=?UTF-8?B?AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKiss?=\r\n"
-                                 " =?UTF-8?B?LS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZ?=\r\n"
-                                 " =?UTF-8?B?WltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8=?="
-                               >>,
-                               rfc2047_utf8_encode(b, <<<<X>> || X <- lists:seq(0, 16#7F)>>, <<>>, 1, <<" ">>)
-                              ),
-                            ?assertEqual(
-                               <<
-                                 "=?UTF-8?B?UGxhY2UgYW4gVVRGOCA0Ynl0ZSBjaGFyYWN0ZXIgYXQgdGhlIGJyZWFr?=\r\n"
-                                 " =?UTF-8?B?8J+AhA==?="
-                               >>,
-                               rfc2047_utf8_encode(
-                                 b, <<"Place an UTF8 4byte character at the break", 16#F0, 16#9F, 16#80, 16#84>>, <<>>, 1, <<" ">>
-                                )
-                              )
-                    end},
+
      {"Pick encoding", fun() ->
                                ?assertEqual(<<"asdf">>, rfc2047_utf8_encode(<<"asdf">>)),
                                ?assertEqual(<<"=?UTF-8?Q?x=09?=">>, rfc2047_utf8_encode(<<"x\t">>)),

@@ -23,37 +23,38 @@
 -module(smtp_socket).
 
 -define(TCP_LISTEN_OPTIONS, [
-    {active, false},
-    {backlog, 30},
-    {ip, {0, 0, 0, 0}},
-    {keepalive, true},
-    {packet, line},
-    {reuseaddr, true}
-]).
+                             {active, false},
+                             {backlog, 30},
+                             {ip, {0, 0, 0, 0}},
+                             {keepalive, true},
+                             {packet, line},
+                             {reuseaddr, true}
+                            ]).
 -define(TCP_CONNECT_OPTIONS, [
-    {active, false},
-    {packet, line},
-    {ip, {0, 0, 0, 0}},
-    {port, 0}
-]).
+                              {active, false},
+                              {packet, line},
+                              {ip, {0, 0, 0, 0}},
+                              {port, 0}
+                             ]).
 -define(SSL_LISTEN_OPTIONS, [
-    {active, false},
-    {backlog, 30},
-    {certfile, "server.crt"},
-    {depth, 0},
-    {keepalive, true},
-    {keyfile, "server.key"},
-    {packet, line},
-    {reuse_sessions, false},
-    {reuseaddr, true}
-]).
+                             {active, false},
+                             {backlog, 30},
+                             {certfile, "server.crt"},
+                             {depth, 0},
+                             {keepalive, true},
+                             {keyfile, "server.key"},
+                             {packet, line},
+                             {reuse_sessions, false},
+                             {reuseaddr, true}
+                            ]).
 -define(SSL_CONNECT_OPTIONS, [
-    {active, false},
-    {depth, 0},
-    {packet, line},
-    {ip, {0, 0, 0, 0}},
-    {port, 0}
-]).
+                              {active, false},
+                              {depth, 0},
+                              {packet, line},
+                              {ip, {0, 0, 0, 0}},
+                              {port, 0},
+                              {verify, verify_none} %% since OTP-26, defaults to verify_peer
+                             ]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -264,15 +265,16 @@ to_ssl_client(Socket) ->
     to_ssl_client(Socket, []).
 
 -spec to_ssl_client(Socket :: socket(), Options :: list()) ->
-    {'ok', ssl:sslsocket()} | {'error', 'already_ssl'}.
+          {'ok', ssl:sslsocket()} | {'error', 'already_ssl'}.
 to_ssl_client(Socket, Options) ->
     to_ssl_client(Socket, Options, infinity).
 
 -spec to_ssl_client(
-    Socket :: socket(), Options :: list(), Timeout :: non_neg_integer() | 'infinity'
-) -> {'ok', ssl:sslsocket()} | {'error', 'already_ssl'}.
+        Socket :: socket(), Options :: list(), Timeout :: non_neg_integer() | 'infinity'
+       ) -> {'ok', ssl:sslsocket()} | {'error', 'already_ssl'}.
 to_ssl_client(Socket, Options, Timeout) when is_port(Socket) ->
-    ssl:connect(Socket, ssl_connect_options(Options), Timeout);
+    SSLOptions = ssl_connect_options(Options),
+    ssl:connect(Socket, SSLOptions, Timeout);
 to_ssl_client(_Socket, _Options, _Timeout) ->
     {error, already_ssl}.
 
