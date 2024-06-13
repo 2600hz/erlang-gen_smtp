@@ -62,9 +62,23 @@ mxlookup(Domain) ->
     end,
     case inet_res:lookup(Domain, in, mx) of
         [] ->
-            lists:map(fun(X) -> {10, inet_parse:ntoa(X)} end, inet_res:lookup(Domain, in, a));
+            alookup(Domain);
         Result ->
             lists:sort(Result)
+    end.
+
+alookup(Domain) ->
+    case inet_res:lookup(Domain, in, a) of
+        [] -> hostent(Domain);
+        As -> [{10, inet_parse:ntoa(A)} || A <- As]
+    end.
+
+hostent(Domain) ->
+    case inet:gethostbyname(Domain) of
+        {'ok', #hostent{h_addr_list=Addrs}} ->
+            lists:uniq([{10, inet_parse:ntoa(A)} || A <- Addrs]);
+        {'error', _} ->
+            []
     end.
 
 %% @doc guess the current host's fully qualified domain name, on error return "localhost"
