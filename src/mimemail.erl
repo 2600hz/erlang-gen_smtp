@@ -342,8 +342,25 @@ convert(_To, <<"x-binaryenc">>, Data) ->
     {ok, Data};
 convert(Same, Same, Data) -> {ok, Data};
 convert(To, From, Data) ->
-    Result = iconv:convert(From, To, Data),
-    {ok, Result}.
+    case is_same_content_type(From, To) of
+        true -> {ok, Data};
+        false -> iconv(To, From, Data)
+    end.
+
+iconv(To, From, Data) ->
+    try
+        {ok, iconv:convert(From, To, Data)}
+    catch
+        _:_:_ ->
+            {ok, Data}
+    end.
+
+is_same_content_type(FromCT, ToCT) ->
+    content_type(FromCT) =:= content_type(ToCT).
+
+content_type(ContentType) ->
+    [CT | _] = binary:split(ContentType, <<" ">>, [trim_all, global]),
+    list_to_binary(string:uppercase(binary_to_list(CT))).
 
 decode_component(Headers, Body, MimeVsn = <<"1.0", _/binary>>, Options) ->
     case parse_content_disposition(get_header_value(<<"Content-Disposition">>, Headers)) of
